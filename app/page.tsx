@@ -1,0 +1,23 @@
+import { Header } from "@/components/landing/Header";
+import { Hero } from "@/components/landing/Hero";
+import { NicheDemo } from "@/components/landing/NicheDemo";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { Benefits } from "@/components/landing/Benefits";
+import { FinalCTA } from "@/components/landing/FinalCTA";
+import { Footer } from "@/components/landing/Footer";
+
+export default function Home() {
+  return (
+    <>
+      <Header />
+      <main>
+        <Hero />
+        <NicheDemo />
+        <HowItWorks />
+        <Benefits />
+        <FinalCTA />
+      </main>
+      <Footer />
+    </>
+  );
+}

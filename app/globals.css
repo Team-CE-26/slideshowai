@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens (dark theme, single accent color — indigo)
+   --------------------------------------------------------------------------- */
+@theme {
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Surface — dark elevation ladder (background < surface < card) */
+  --color-background: #0b1120; /* page */
+  --color-foreground: #e6eaf3; /* near-white body/heading text */
+  --color-muted: #94a3b8; /* slate-400 — readable secondary text on dark */
+  --color-surface: #131d33; /* alternating section background (distinct from page) */
+  --color-card: #1d2942; /* elevated cards / pills / badges */
+  --color-border: #243049; /* subtle separators */
+
+  /* Accent. Fills use accent/accent-strong; text-on-dark uses accent-text. */
+  --color-accent: #4f46e5; /* indigo-600 — fill; white text clears WCAG AA */
+  --color-accent-strong: #4338ca; /* indigo-700 — darker hover keeps white text >= AA */
+  --color-accent-text: #818cf8; /* indigo-400 — accent as text/icon on dark */
+  --color-accent-soft: rgba(99, 102, 241, 0.15); /* tinted icon-tile background */
+  --color-accent-foreground: #ffffff;
+
+  /* Rounded corners */
+  --radius-card: 1.25rem;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbar on the mobile slide carousel while keeping it scrollable */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fade/slide-in used when the niche demo swaps slides */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

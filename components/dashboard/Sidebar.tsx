@@ -1,0 +1,168 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Logo } from "@/components/landing/Logo";
+
+type NavItem = { label: string; href: string; icon: React.ReactNode };
+
+const NAV: NavItem[] = [
+  {
+    label: "Slideshows",
+    href: "/dashboard/slideshows",
+    icon: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="M10 9l5 3-5 3z" />
+      </>
+    ),
+  },
+  {
+    label: "Image Library",
+    href: "/dashboard/images",
+    icon: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <circle cx="8.5" cy="10" r="1.5" />
+        <path d="M21 16l-5-5-8 8" />
+      </>
+    ),
+  },
+  {
+    label: "Templates",
+    href: "#",
+    icon: (
+      <>
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      </>
+    ),
+  },
+  {
+    label: "Scheduled Posts",
+    href: "#",
+    icon: (
+      <>
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M3 9h18M8 2v4M16 2v4" />
+      </>
+    ),
+  },
+  {
+    label: "Settings",
+    href: "#",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+      </>
+    ),
+  },
+];
+
+function NavIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const onCreate = pathname === "/dashboard";
+
+  return (
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <div className="flex h-16 items-center px-5">
+        <Logo />
+      </div>
+
+      <div className="px-3">
+        <Link
+          href="/dashboard"
+          className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+            onCreate
+              ? "bg-accent text-accent-foreground shadow-lg shadow-accent/25 hover:bg-accent-strong"
+              : "border border-border bg-card text-foreground hover:border-accent hover:text-accent-text"
+          }`}
+        >
+          <span aria-hidden className="text-base leading-none">+</span>
+          Create Slideshow
+        </Link>
+      </div>
+
+      <nav className="mt-5 flex-1 px-3">
+        <span className="px-3 text-xs font-semibold uppercase tracking-wide text-muted">
+          Workspace
+        </span>
+        <div className="mt-2 space-y-1">
+          {NAV.map((item) => {
+            const active =
+              item.href !== "#" &&
+              (pathname === item.href || pathname.startsWith(item.href + "/"));
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-accent/15 text-accent-text"
+                    : "text-muted hover:bg-card hover:text-foreground"
+                }`}
+              >
+                <NavIcon>{item.icon}</NavIcon>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Plan / credits */}
+      <div className="px-3">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Free plan</p>
+          <p className="mt-0.5 text-xs text-muted">0 credits remaining</p>
+          <button
+            type="button"
+            className="mt-3 w-full rounded-full bg-gradient-to-r from-fuchsia-500 to-accent px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            Get more credits
+          </button>
+        </div>
+      </div>
+
+      {/* User */}
+      <div className="mt-3 border-t border-border p-3">
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-card"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent to-fuchsia-500 text-sm font-bold text-white">
+            B
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">Your business</span>
+            <span className="block truncate text-xs text-muted">Free workspace</span>
+          </span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden>
+            <path d="M8 9l4-4 4 4M16 15l-4 4-4-4" />
+          </svg>
+        </button>
+      </div>
+    </aside>
+  );
+}
