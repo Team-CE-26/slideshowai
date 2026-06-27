@@ -39,6 +39,13 @@ export default async function SlideshowDetailPage({
     .single();
   if (!ss) notFound();
 
+  const { data: tiktokConn } = await supabase
+    .from("tiktok_connections")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const isTikTokConnected = !!tiktokConn;
+
   const { data: slideRows } = await supabase
     .from("slides")
     .select(
@@ -89,6 +96,7 @@ export default async function SlideshowDetailPage({
         title={ss.title ?? "Untitled slideshow"}
         slides={slides}
         zipHref={`/api/slideshows/${ss.id}/zip`}
+        isTikTokConnected={isTikTokConnected}
       />
     </div>
   );

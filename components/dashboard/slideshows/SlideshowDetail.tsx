@@ -5,6 +5,7 @@ import {
   renameSlideshow,
 } from "@/app/dashboard/slideshows/actions";
 import { SlideEditor, type EditorSlide } from "./SlideEditor";
+import { TikTokPostButton } from "./TikTokPostButton";
 import type { SlideRole } from "@/lib/generate/layout";
 
 interface DetailSlide {
@@ -27,11 +28,13 @@ export function SlideshowDetail({
   title,
   slides,
   zipHref,
+  isTikTokConnected,
 }: {
   id: string;
   title: string;
   slides: DetailSlide[];
   zipHref: string;
+  isTikTokConnected: boolean;
 }) {
   const editorSlides: EditorSlide[] = slides.map((s) => ({
     position: s.position,
@@ -68,7 +71,16 @@ export function SlideshowDetail({
           </button>
         </form>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <TikTokPostButton
+            slideshowId={id}
+            slides={slides.map((s) => ({
+              position: s.position,
+              caption: s.caption,
+              url: s.url,
+            }))}
+            isConnected={isTikTokConnected}
+          />
           <a
             href={zipHref}
             className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-lg shadow-accent/25 transition-colors hover:bg-accent-strong"
