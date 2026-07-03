@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     client_key: clientKey,
     response_type: "code",
-    scope: "video.publish",
+    // video.publish → DIRECT_POST; video.upload → MEDIA_UPLOAD (send to drafts).
+    scope: "video.publish,video.upload",
     redirect_uri: redirectUri,
     state,
   });

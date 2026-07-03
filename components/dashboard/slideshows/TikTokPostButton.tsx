@@ -41,6 +41,10 @@ export function TikTokPostButton({
   );
   const [privacy, setPrivacy] = useState<PrivacyLevel>("PUBLIC_TO_EVERYONE");
   const [coverIndex, setCoverIndex] = useState(0);
+  // "direct" = publish now (DIRECT_POST); "drafts" = send to TikTok drafts so you
+  // pick your own sound in the app (MEDIA_UPLOAD, needs the video.upload scope).
+  const [postMode, setPostMode] = useState<"direct" | "drafts">("direct");
+  const [autoMusic, setAutoMusic] = useState(true);
   const [state, setState] = useState<PostState>("idle");
   const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,7 +79,6 @@ export function TikTokPostButton({
     params.delete("tiktok_error");
     const qs = params.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openModal() {
@@ -155,9 +158,10 @@ export function TikTokPostButton({
         return;
       }
 
-      if (data.status === "PUBLISH_COMPLETE") {
+      // PUBLISH_COMPLETE = direct post live; SEND_TO_USER_INBOX = landed in drafts.
+      if (data.status === "PUBLISH_COMPLETE" || data.status === "SEND_TO_USER_INBOX") {
         setState("done");
-        // Celebrate briefly, then take them straight to the post they just made.
+        // Direct posts have a saved row → jump to it. Drafts stay on the done card.
         if (postIdRef.current) {
           setTimeout(() => router.push(`/dashboard/posts/${postIdRef.current}`), 1400);
         }
@@ -188,6 +192,8 @@ export function TikTokPostButton({
           caption,
           privacyLevel: privacy,
           coverIndex,
+          postMode: postMode === "drafts" ? "MEDIA_UPLOAD" : "DIRECT_POST",
+          autoAddMusic: autoMusic,
         }),
       });
       const data = await res.json() as { publish_id?: string; postId?: string; error?: string };
@@ -257,17 +263,23 @@ export function TikTokPostButton({
           <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
             {state === "done" ? (
               <div className="flex flex-col items-center gap-4 py-4 text-center">
-                <span className="text-4xl">🎉</span>
-                <p className="text-lg font-bold">Congrats — you posted to TikTok!</p>
+                <span className="text-4xl">{postMode === "drafts" ? "📥" : "🎉"}</span>
+                <p className="text-lg font-bold">
+                  {postMode === "drafts"
+                    ? "Sent to your TikTok drafts!"
+                    : "Congrats — you posted to TikTok!"}
+                </p>
                 <p className="text-sm text-muted">
-                  Taking you to your post…
+                  {postMode === "drafts"
+                    ? "Open the TikTok app to add your sound and post."
+                    : "Taking you to your post…"}
                 </p>
                 <button
                   type="button"
                   onClick={handleDone}
                   className="mt-2 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground"
                 >
-                  See your post →
+                  {postMode === "drafts" ? "Done" : "See your post →"}
                 </button>
               </div>
             ) : (
@@ -305,6 +317,40 @@ export function TikTokPostButton({
                   </p>
                 </div>
 
+                {/* How to post */}
+                <div className="mb-4">
+                  <label className="mb-1.5 block text-xs font-semibold text-muted">
+                    How to post
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([["direct", "Post now"], ["drafts", "Send to drafts"]] as const).map(
+                      ([m, label]) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setPostMode(m)}
+                          disabled={state === "posting" || state === "polling"}
+                          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                            postMode === m
+                              ? "border-accent bg-accent/10 text-accent-text"
+                              : "border-border bg-card text-muted hover:border-accent/50"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {postMode === "drafts" ? (
+                  <div className="mb-5 rounded-lg border border-border bg-card px-3 py-2.5 text-xs leading-relaxed text-muted">
+                    We&apos;ll send these slides to your TikTok{" "}
+                    <span className="text-foreground">drafts</span>. Open the TikTok app to pick your
+                    own sound, cover, caption &amp; privacy — then post.
+                  </div>
+                ) : (
+                  <>
                 {/* Privacy */}
                 <div className="mb-4">
                   <label className="mb-1.5 block text-xs font-semibold text-muted">
@@ -359,6 +405,35 @@ export function TikTokPostButton({
                   </div>
                 )}
 
+                {/* Sound */}
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted">Sound</p>
+                    <p className="text-[11px] text-muted">Let TikTok add a recommended track</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoMusic((v) => !v)}
+                    disabled={state === "posting" || state === "polling"}
+                    aria-pressed={autoMusic}
+                    className="shrink-0 disabled:opacity-60"
+                  >
+                    <span
+                      className={`relative block h-5 w-9 rounded-full transition-colors ${
+                        autoMusic ? "bg-accent" : "bg-white/15"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                          autoMusic ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </span>
+                  </button>
+                </div>
+                  </>
+                )}
+
                 {/* Error */}
                 {state === "error" && error && (
                   <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -392,13 +467,13 @@ export function TikTokPostButton({
                     className="inline-flex items-center gap-2 rounded-full bg-[#010101] px-5 py-2 text-sm font-semibold text-white shadow transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {state === "posting" ? (
-                      "Posting…"
+                      postMode === "drafts" ? "Sending…" : "Posting…"
                     ) : state === "polling" ? (
                       "Processing…"
                     ) : (
                       <>
                         <TikTokIcon className="text-white" />
-                        Post now
+                        {postMode === "drafts" ? "Send to drafts" : "Post now"}
                       </>
                     )}
                   </button>

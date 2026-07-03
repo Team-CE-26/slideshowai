@@ -17,6 +17,10 @@ interface PostBody {
   caption?: string;
   privacyLevel?: PrivacyLevel;
   coverIndex?: number;
+  // DIRECT_POST = publish immediately; MEDIA_UPLOAD = send to the user's TikTok
+  // drafts so they finish it (incl. picking their own sound) in the TikTok app.
+  postMode?: "DIRECT_POST" | "MEDIA_UPLOAD";
+  autoAddMusic?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -33,7 +37,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { slideshowId, caption = "", privacyLevel = "SELF_ONLY", coverIndex = 0 } = body;
+  const {
+    slideshowId,
+    caption = "",
+    privacyLevel = "SELF_ONLY",
+    coverIndex = 0,
+    postMode = "DIRECT_POST",
+    autoAddMusic = true,
+  } = body;
+  const isDraft = postMode === "MEDIA_UPLOAD";
   if (!slideshowId) return NextResponse.json({ error: "slideshowId is required." }, { status: 400 });
   if (!PRIVACY_LEVELS.includes(privacyLevel as PrivacyLevel)) {
     return NextResponse.json({ error: "Invalid privacy level." }, { status: 400 });
@@ -78,14 +90,18 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         media_type: "PHOTO",
-        post_mode: "DIRECT_POST",
-        post_info: {
-          description: caption,
-          privacy_level: privacyLevel,
-          photo_cover_index: safeCover,
-          auto_add_music: true,
-          disable_comment: false,
-        },
+        post_mode: isDraft ? "MEDIA_UPLOAD" : "DIRECT_POST",
+        // Drafts are finished in the TikTok app, so only prefill the caption —
+        // privacy, cover, and sound are chosen there.
+        post_info: isDraft
+          ? { description: caption }
+          : {
+              description: caption,
+              privacy_level: privacyLevel,
+              photo_cover_index: safeCover,
+              auto_add_music: autoAddMusic,
+              disable_comment: false,
+            },
         source_info: {
           source: "PULL_FROM_URL",
           photo_images: photoImages,
@@ -120,8 +136,11 @@ export async function POST(request: Request) {
   const publishId = tiktokData.data?.publish_id;
   if (!publishId) return NextResponse.json({ error: "No publish_id in TikTok response." }, { status: 502 });
 
-  // Record the post so it shows up in "My Posts". Status is refined later by
-  // /api/tiktok/status. RLS scopes this to the owner.
+  // Drafts aren't "posts" yet (finished in the app), so only record direct posts
+  // in "My Posts". Status is refined later by /api/tiktok/status. RLS scopes to owner.
+  if (isDraft) {
+    return NextResponse.json({ publish_id: publishId, postId: null, draft: true });
+  }
   const { data: postRow } = await supabase
     .from("tiktok_posts")
     .insert({

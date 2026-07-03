@@ -528,21 +528,11 @@ export function SlideEditor({
               Slide {current.position + 1}
               <span className="ml-2 font-normal capitalize text-muted">{current.role}</span>
             </h3>
-            <span
-              className={`text-xs font-medium ${
-                saveState === "error"
-                  ? "text-red-300"
-                  : saveState === "saving"
-                    ? "text-muted"
-                    : "text-transparent"
-              }`}
-            >
-              {saveState === "saving"
-                ? "Saving…"
-                : saveState === "error"
-                  ? error || "Save failed"
-                  : "·"}
-            </span>
+            {saveState === "error" ? (
+              <span className="text-xs font-medium text-red-300">
+                {error || "Save failed"}
+              </span>
+            ) : null}
           </div>
 
           {/* Presets */}
