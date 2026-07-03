@@ -27,26 +27,28 @@ The dashboard is modeled almost entirely on [Lovable.dev](https://lovable.dev)'s
 - The navbar border/line
 - `overflow-hidden` on the generator card (breaks dropdown panels)
 
-## TikTok Content Posting API
+## TikTok Content Posting API — LIVE (end-to-end working as of 2026-07-03)
 
-Endpoint: `POST https://open.tiktokapis.com/v2/post/publish/content/init/`
-Mode: `DIRECT_POST`, `media_type: PHOTO`, `source: PULL_FROM_URL` (TikTok pulls images from URLs — no binary upload).
-Scope: `video.publish` (despite the name, works for photos).
-OAuth: standard OAuth 2.0. Authorize at `https://www.tiktok.com/v2/auth/authorize/`, exchange at `https://open.tiktokapis.com/v2/oauth/token/`. Access token: 24h. Refresh token: 365 days rolling. Client key + secret (never `NEXT_PUBLIC_`).
-Status polling: `POST https://open.tiktokapis.com/v2/post/publish/status/fetch/` with `publish_id`. Statuses: `PROCESSING_DOWNLOAD`, `PUBLISH_COMPLETE`, `FAILED`.
+Full flow works: OAuth connect → init → TikTok pulls proxied JPEGs → status poll → `PUBLISH_COMPLETE` → private post lands on the target user's profile. Posts persist to `tiktok_posts` and render in **My Posts** (`/dashboard/posts`).
 
-**Critical constraints:**
-- TikTok only accepts JPEG/WebP — PNG is rejected (`file_format_check_failed`). Our slides are PNGs; convert via the image proxy.
-- TikTok requires domain ownership verification. Supabase's `*.supabase.co` domain cannot be verified. Solution: proxy slides through our Vercel domain (`/api/tiktok/img/[id]/[pos]`) and verify that domain in the TikTok developer portal.
-- URLs must stay alive for ~1 hour after the init call (the proxy handles this naturally).
-- Until TikTok audits the app, all posts are forced `SELF_ONLY` regardless of requested privacy.
-- Rate limit: 6 init calls/min per user token. Max 5 pending posts per user per 24h.
+**API:**
+- Init: `POST .../v2/post/publish/content/init/` — `DIRECT_POST`, `media_type: PHOTO`, `source: PULL_FROM_URL` (no binary upload).
+- OAuth: authorize `https://www.tiktok.com/v2/auth/authorize/`, exchange + refresh `.../v2/oauth/token/`. Scope `video.publish` (works for photos). Access token 24h; refresh token 365d rolling. Client key/secret never `NEXT_PUBLIC_`.
+- Status: `POST .../v2/post/publish/status/fetch/` with `publish_id` → `PROCESSING_DOWNLOAD` | `PUBLISH_COMPLETE` | `FAILED`.
+- **Token endpoint responses are FLAT** (top-level `access_token`/`refresh_token`/`open_id`; errors as `{error, error_description}` strings) for BOTH exchange AND refresh — NOT nested under `data`. (Content-posting endpoints DO nest under `data` with `{error:{code,message}}`.) Reading `.data` on token responses is the recurring bug — it hit both the callback and `getValidToken`.
+- Rate limits: 6 init/min per user; max 5 pending posts / 24h.
 
-**Implementation pieces (not yet built):**
-1. `/api/tiktok/img/[id]/[pos]` — proxy: downloads PNG from Supabase Storage, serves as JPEG via Sharp
-2. `/api/auth/tiktok` + `/api/auth/tiktok/callback` — OAuth flow, stores tokens in `tiktok_connections` table
-3. `/api/tiktok/post` — calls init endpoint with proxy URLs, returns `publish_id`
-4. `/api/tiktok/status` — polls TikTok status, returns to client
-5. DB migration: `tiktok_connections` table (open_id, access_token, refresh_token, expires_at) per user
-6. UI: "Post to TikTok" in SlideshowDetail — TikTok connect gate → caption/privacy modal → post → poll status
-7. Env vars needed: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`
+**Hard-won gotchas (all resolved):**
+- **Unaudited app ⇒ the TikTok *account* must be set to Private** (Settings → Privacy → Private account). Error `unaudited_client_can_only_post_to_private_accounts` is about the account's privacy setting, NOT the post's `privacy_level`. Also: all posts forced `SELF_ONLY` until TikTok audits the app.
+- **PNG rejected** (JPEG/WebP only). Proxy `/api/tiktok/img/[id]/[pos]` downloads the slide from Storage and re-encodes to JPEG via Sharp. Auth = 2h HMAC token in the query string (`utils/tiktok.ts`).
+- **Domain verification** is done via **URL prefix + signature file** (NOT DNS — no DNS control over ngrok/vercel subdomains). Signature file lives at `public/tiktok<token>.txt`, served at the domain root, verified in portal (Content Posting API → Direct Post → Verify domains → URL prefix). `*.supabase.co` can't be verified → hence the proxy.
+- **ngrok free tier is incompatible.** Its browser-warning interstitial (ERR_NGROK_6024) is served to browser-UA fetchers, so TikTok gets HTML instead of the file/JPEG → domain-verify + photo-pull both fail. **We moved to Vercel** (no interstitial). Prod domain: `slideshowai-three.vercel.app`. See the deployment memory.
+- **`photo_pull_failed`** was caused by an **invalid/truncated `SUPABASE_SECRET_KEY`** — the proxy's admin query failed and the route *masked it as 404 "Slide not found."* The route now surfaces admin/DB errors as 500. A valid `sb_secret_…` key is required for the proxy's admin client.
+- **Sandbox app** (client key prefix `sbaw…`): only accounts added as **Target Users** in the sandbox can connect; unaudited ⇒ SELF_ONLY. Public visibility needs a production app + TikTok audit.
+- **Test mode can't post** — the Generator's mock (`test-mock-id`) has no DB row and uses `data:` image URLs. Use Real mode (Source = Photos → library images; cheap, no AI image gen enabled — only caption text). Generate once, reuse for post tests.
+
+**Files (all built):** `utils/tiktok.ts`; `app/api/auth/tiktok/route.ts` + `callback/route.ts` (popup OAuth); `app/api/tiktok/{post,status}/route.ts` + `img/[id]/[pos]/route.ts`; `components/dashboard/slideshows/TikTokPostButton.tsx` (modal portalled to `document.body`); `app/dashboard/posts/{page.tsx,[id]/page.tsx}` + `components/dashboard/posts/PostViewer.tsx` (My Posts).
+
+**DB migrations** (run manually in Supabase SQL Editor, RLS owner-only): `tiktok_connections` (20260626130000) + `tiktok_posts` (20260703120000: slideshow_id, publish_id, caption, privacy_level, cover_index, status, fail_reason).
+
+**Env vars:** `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL` (= prod Vercel domain), `SUPABASE_SECRET_KEY` (valid `sb_secret_…`, used by the proxy admin client).
