@@ -838,10 +838,10 @@ export function Generator({
             return (
               <div
                 key={i}
-                className="animate-fade-up overflow-hidden rounded-2xl border border-white/8 bg-[#0a0a0a]"
+                className="animate-generate overflow-hidden rounded-2xl border border-white/8 bg-[#0a0a0a]"
               >
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4 px-5 py-5">
+                <div className="flex items-start justify-between gap-4 px-6 py-6">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
                       Ready to post
@@ -860,11 +860,11 @@ export function Generator({
                 </div>
 
                 {/* Filmstrip */}
-                <div className="flex gap-2 overflow-x-auto px-5 pb-5 no-scrollbar">
+                <div className="flex gap-3 overflow-x-auto px-6 pb-6 no-scrollbar">
                   {ss.slides.map((sl, j) => (
                     <div
                       key={j}
-                      className="group relative shrink-0 w-20 overflow-hidden rounded-xl border border-white/6"
+                      className="group relative shrink-0 w-24 overflow-hidden rounded-xl border border-white/6"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -888,7 +888,7 @@ export function Generator({
                 </div>
 
                 {/* Actions */}
-                <div className="flex flex-wrap items-center gap-2 border-t border-white/5 px-5 py-4">
+                <div className="flex flex-wrap items-center gap-2 border-t border-white/5 px-6 py-4">
                   {ss.persisted && ss.id ? (
                     <>
                       <TikTokPostButton
@@ -930,7 +930,7 @@ export function Generator({
                     <button
                       type="button"
                       onClick={() => toggleEditing(i)}
-                      className="flex w-full items-center gap-2 px-5 py-3 text-xs text-white/30 transition-colors hover:text-white/70"
+                      className="flex w-full items-center gap-2 px-6 py-3 text-xs text-white/30 transition-colors hover:text-white/70"
                     >
                       <span aria-hidden className="text-[10px]">
                         {editing ? "↑" : "✥"}

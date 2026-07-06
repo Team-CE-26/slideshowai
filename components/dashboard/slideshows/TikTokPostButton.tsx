@@ -262,9 +262,9 @@ export function TikTokPostButton({
       <button
         type="button"
         onClick={openModal}
-        className="inline-flex items-center gap-2 rounded-full bg-[#010101] px-4 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 hover:shadow-xl"
+        className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-black/30 transition-all hover:bg-white/90 hover:shadow-xl"
       >
-        <TikTokIcon className="text-white" />
+        <TikTokIcon className="text-black" />
         Post to TikTok
       </button>
 
@@ -481,7 +481,7 @@ export function TikTokPostButton({
                     type="button"
                     onClick={() => void handlePost()}
                     disabled={state === "posting" || state === "polling"}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#010101] px-5 py-2 text-sm font-semibold text-white shadow transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-black shadow-lg shadow-black/30 transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {state === "posting" ? (
                       postMode === "drafts" ? "Sending…" : "Posting…"
@@ -489,7 +489,7 @@ export function TikTokPostButton({
                       "Processing…"
                     ) : (
                       <>
-                        <TikTokIcon className="text-white" />
+                        <TikTokIcon className="text-black" />
                         {postMode === "drafts" ? "Send to drafts" : "Post now"}
                       </>
                     )}
