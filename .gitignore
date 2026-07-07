@@ -49,3 +49,6 @@ e2e/.auth
 test-results
 playwright-report
 playwright/.cache
+
+# trends scraper trial output
+.scraptik-trial-raw.json
