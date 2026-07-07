@@ -2,40 +2,74 @@ import { Reveal } from "./Reveal";
 import { Eyebrow } from "./Eyebrow";
 
 /* -------------------------------------------------------------------------- */
-/*  Shared mockup primitives — a faux "SlideShowAI" app window                 */
+/*  Shared mockup primitives — a faux "SlideShowAI" app window that mirrors    */
+/*  the REAL dashboard (sidebar nav, generator, trends, slideshow view).       */
 /* -------------------------------------------------------------------------- */
+
+// Real images from the app's background library (public bucket).
+const LIB = (p: string) =>
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/library/${p}`;
 
 function WindowChrome({
   title,
   subtitle,
   action,
+  active,
   children,
 }: {
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
+  /** Which sidebar item is highlighted. */
+  active: string;
   children: React.ReactNode;
 }) {
+  const nav = [
+    { section: "Workspace", items: ["Slideshows", "Image Library"] },
+    { section: "Grow", items: ["Trends", "Schedule", "Analytics"] },
+  ];
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0c0c0e] shadow-2xl shadow-black/60 ring-1 ring-black/40">
       <div className="flex">
-        {/* sidebar */}
+        {/* sidebar — mirrors the real dashboard nav */}
         <aside className="hidden w-32 shrink-0 flex-col justify-between border-r border-white/[0.06] p-3 sm:flex">
           <div>
             <div className="flex items-center gap-1.5">
               <span className="h-4 w-4 rounded-md bg-linear-to-br from-accent to-fuchsia-500" />
               <span className="text-[10px] font-bold text-white">SlideShowAI</span>
             </div>
-            <nav className="mt-4 space-y-1.5 text-[9px] text-white/45">
-              <p className="rounded bg-white/[0.06] px-1.5 py-1 text-white/80">Dashboard</p>
-              <p className="px-1.5 py-1">Slideshows</p>
-              <p className="px-1.5 py-1">Images</p>
+            <p className="mt-3 rounded-full bg-accent px-2 py-1 text-center text-[8px] font-bold text-white">
+              + Create Slideshow
+            </p>
+            <nav className="mt-3 space-y-2.5">
+              {nav.map((group) => (
+                <div key={group.section}>
+                  <p className="px-1.5 text-[7px] font-bold uppercase tracking-wider text-white/30">
+                    {group.section}
+                  </p>
+                  <div className="mt-1 space-y-0.5 text-[9px] text-white/45">
+                    {group.items.map((item) => (
+                      <p
+                        key={item}
+                        className={`rounded px-1.5 py-1 ${
+                          item === active
+                            ? "bg-accent/15 text-accent-text"
+                            : ""
+                        }`}
+                      >
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
           </div>
-          <div className="space-y-1.5 text-[9px] text-white/35">
-            <p className="px-1.5">Admin</p>
-            <p className="px-1.5">Share feedback</p>
-            <p className="px-1.5">Settings</p>
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-2">
+            <p className="text-[8px] font-semibold text-white/70">Free plan</p>
+            <p className="mt-1 rounded-full bg-linear-to-r from-fuchsia-500 to-accent px-1.5 py-0.5 text-center text-[7px] font-semibold text-white">
+              Get more credits
+            </p>
           </div>
         </aside>
 
@@ -81,7 +115,7 @@ function Tile({
   caption,
 }: {
   img: string;
-  n: number;
+  n?: number;
   caption?: string;
 }) {
   return (
@@ -89,9 +123,11 @@ function Tile({
       className="relative aspect-9/16 overflow-hidden rounded-md bg-cover bg-center ring-1 ring-white/10"
       style={{ backgroundImage: `url(${img})` }}
     >
-      <span className="absolute left-1 top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/60 text-[7px] font-bold text-white">
-        {n}
-      </span>
+      {n !== undefined && (
+        <span className="absolute left-1 top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/60 text-[7px] font-bold text-white">
+          {n}
+        </span>
+      )}
       {caption && (
         <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 to-transparent px-1.5 pb-1.5 pt-3">
           <p className="line-clamp-2 text-[7.5px] font-semibold leading-tight text-white">
@@ -104,131 +140,153 @@ function Tile({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  The three product mockups                                                  */
+/*  The three product mockups — matching today's real screens                  */
 /* -------------------------------------------------------------------------- */
 
-function MockCarousel() {
-  const tiles = [
-    { img: "/library/gym/gym-05.jpg", caption: "Ever feel stuck in startup limbo?" },
-    { img: "/demo/saas-1.jpeg", caption: "Was hustling but getting nowhere fast" },
-    { img: "/library/gym/gym-13.jpg", caption: "Found the secret sauce: pivot and adapt" },
-    { img: "/demo/golf-2.jpeg", caption: "Ditch the grind, embrace smart moves" },
-    { img: "/library/gym/gym-09.jpg" },
-    { img: "/demo/saas-4.jpeg" },
-    { img: "/library/gym/gym-16.jpg" },
+// 01 — the Generator: options bar, prompt, try-chips, collection cards.
+function MockGenerator() {
+  const collections = [
+    { name: "Gym & Fitness", imgs: ["gym/7186296.jpg", "gym/4753890.jpg", "gym/35540076.jpg", "gym/9669473.jpg"], active: true },
+    { name: "Food & Dining", imgs: ["food/36430080.jpg", "food/32525175.jpg", "food/22994309.jpg", "food/28705621.jpg"] },
+    { name: "Travel", imgs: ["travel/4004016.jpg", "travel/127441.jpg", "travel/11693864.jpg", "travel/35168054.jpg"] },
   ];
   return (
     <WindowChrome
-      title="Carousel Slides"
-      subtitle="7 slides added"
-      action={<PillButton variant="accent">Generate Captions</PillButton>}
+      title="What will you post today?"
+      subtitle="Pick a style. Describe your idea. Go viral."
+      active="Slideshows"
     >
-      <div className="grid grid-cols-4 gap-2">
-        {tiles.map((t, i) => (
-          <Tile key={i} img={t.img} n={i + 1} caption={t.caption} />
-        ))}
-        {/* add-slide tile */}
-        <div className="grid aspect-9/16 place-items-center rounded-md border border-dashed border-white/15 text-center">
-          <div className="text-white/40">
-            <div className="mx-auto text-base leading-none">+</div>
-            <div className="mt-0.5 text-[7px]">Add Slide</div>
-          </div>
-        </div>
-      </div>
-    </WindowChrome>
-  );
-}
-
-function MockGenerate() {
-  const bg = [
-    "/demo/saas-2.jpeg",
-    "/library/gym/gym-02.jpg",
-    "/demo/golf-4.jpeg",
-    "/demo/diet-2.jpeg",
-    "/library/gym/gym-11.jpg",
-    "/demo/golf-1.jpeg",
-  ];
-  return (
-    <WindowChrome
-      title="My Slideshows"
-      subtitle="Hello, Jake"
-      action={<PillButton variant="accent">Create new</PillButton>}
-    >
-      <div className="relative">
-        {/* faded slideshow grid behind the modal */}
-        <div className="grid grid-cols-3 gap-2 opacity-40 blur-[1.5px]">
-          {bg.map((img, i) => (
-            <Tile key={i} img={img} n={i + 1} />
+      <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+        {/* options bar */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[8px]">
+          {[
+            ["Niche", "Gym & Fitness"],
+            ["Slides", "6"],
+            ["Layout", "Title + captions"],
+            ["Source", "Photos"],
+          ].map(([label, value]) => (
+            <span key={label} className="inline-flex items-center gap-1">
+              <span className="text-white/35">{label}</span>
+              <span className="font-semibold text-white/85">{value}</span>
+              <span className="text-white/30">▾</span>
+            </span>
           ))}
         </div>
-
-        {/* generate modal */}
-        <div className="absolute inset-0 grid place-items-center px-2">
-          <div className="w-full max-w-[230px] rounded-lg border border-white/10 bg-[#1a1a1c] p-3 shadow-2xl">
-            <Field label="Content Format" value="Tips & Insights" chevron />
-            <Field label="Category" value="Mental Health" chevron />
-            <Field label="Number of Slides" value="8" />
-            <div className="mt-2">
-              <p className="text-[8px] text-white/45">Content Context</p>
-              <div className="mt-1 h-9 rounded-md bg-white/[0.04] p-1.5 text-[7.5px] leading-tight text-white/30">
-                What should this slideshow be about? Include key points, target
-                audience, and any specific details…
-              </div>
-            </div>
-            <div className="mt-2.5 flex justify-end gap-1.5">
-              <span className="rounded-md bg-white/10 px-2 py-1 text-[8px] font-semibold text-white/70">
-                Cancel
-              </span>
-              <span className="rounded-md bg-accent px-2 py-1 text-[8px] font-semibold text-white">
-                Generate slideshow
-              </span>
-            </div>
-          </div>
+        <p className="mt-2 text-[9.5px] text-white/85">
+          3 exercises to build a bigger chest fast<span className="text-accent">|</span>
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          <span className="text-[7.5px] text-white/35">Try:</span>
+          {["Why our gym is different", "5 beginner mistakes"].map((s) => (
+            <span key={s} className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[7.5px] text-white/60">
+              {s}
+            </span>
+          ))}
+          <span className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-white text-[9px] font-bold text-black">
+            ↑
+          </span>
         </div>
+      </div>
+      {/* collection cards */}
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        {collections.map((c) => (
+          <div
+            key={c.name}
+            className={`relative overflow-hidden rounded-lg ${
+              c.active ? "ring-2 ring-accent" : "opacity-70"
+            }`}
+          >
+            <div className="grid aspect-[3/2] grid-cols-2 grid-rows-2">
+              {c.imgs.map((img) => (
+                <div
+                  key={img}
+                  className="bg-cover bg-center"
+                  style={{ backgroundImage: `url(${LIB(img)})` }}
+                />
+              ))}
+            </div>
+            <div className="absolute inset-0 bg-linear-to-t from-black/80 to-transparent" />
+            <p className="absolute bottom-1 left-1.5 text-[7.5px] font-bold text-white">{c.name}</p>
+          </div>
+        ))}
       </div>
     </WindowChrome>
   );
 }
 
-function Field({
-  label,
-  value,
-  chevron,
-}: {
-  label: string;
-  value: string;
-  chevron?: boolean;
-}) {
-  return (
-    <div className="mb-2">
-      <p className="text-[8px] text-white/45">{label}</p>
-      <div className="mt-1 flex items-center justify-between rounded-md bg-white/[0.05] px-2 py-1.5">
-        <span className="text-[8.5px] text-white/80">{value}</span>
-        {chevron && <span className="text-[8px] text-white/40">▾</span>}
-      </div>
-    </div>
-  );
-}
-
-function MockReady() {
-  const tiles = [
-    { img: "/demo/diet-1.jpeg", caption: "Feeling solo? Let's flip the script" },
-    { img: "/library/gym/gym-07.jpg", caption: "Nature walks: instant mood booster" },
-    { img: "/demo/saas-3.jpeg", caption: "Limit doom-scrolling, boost real chats" },
-    { img: "/demo/golf-3.jpeg", caption: "Get artsy, let your mind breathe" },
-    { img: "/library/gym/gym-18.jpg", caption: "Gratitude journaling: tiny shifts, big feels" },
-    { img: "/demo/golf-1.jpeg", caption: "Volunteer: connection vibes unlocked" },
+// 02 — Trends: the live feed with rank, velocity, Hot today, and Remix.
+function MockTrends() {
+  const trends = [
+    { img: LIB("gym/35540076.jpg"), rank: 1, vel: "+342k/hr", hot: true, title: "POV: day 1 vs day 180" },
+    { img: LIB("cafe/2335689.jpg"), rank: 2, vel: "+118k/hr", hot: true, title: "3 drinks our regulars gatekeep" },
+    { img: LIB("fashion/31870834.jpg"), rank: 3, vel: "+64k/hr", hot: false, title: "What $60 gets you here" },
+    { img: LIB("beauty/11474613.jpg"), rank: 4, vel: "+51k/hr", hot: false, title: "Signs your routine isn't working" },
   ];
   return (
     <WindowChrome
-      title="Your Carousel is Ready"
-      subtitle="Preview your slides and download them for posting"
+      title="Trends"
+      subtitle="The hottest slideshows in your niche, ranked by momentum"
+      action={<PillButton variant="accent">Remix this trend</PillButton>}
+      active="Trends"
+    >
+      <div className="grid grid-cols-4 gap-2">
+        {trends.map((t) => (
+          <div key={t.rank}>
+            <div
+              className="relative aspect-9/16 overflow-hidden rounded-md bg-cover bg-center ring-1 ring-white/10"
+              style={{ backgroundImage: `url(${t.img})` }}
+            >
+              <span
+                className={`absolute left-1 top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-0.5 text-[7px] font-extrabold text-white ${
+                  t.rank <= 3 ? "bg-accent" : "bg-black/60"
+                }`}
+              >
+                #{t.rank}
+              </span>
+              <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1 py-0.5 text-[6.5px] font-bold text-emerald-400">
+                {t.vel}
+              </span>
+              {t.hot && (
+                <span className="absolute bottom-1 left-1 rounded-full bg-amber-400/20 px-1 py-0.5 text-[6.5px] font-bold text-amber-300">
+                  Hot today
+                </span>
+              )}
+            </div>
+            <p className="mt-1 line-clamp-1 text-[7.5px] font-semibold text-white">{t.title}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 rounded-md bg-accent/[0.08] p-2 ring-1 ring-accent/20">
+        <p className="text-[7px] font-bold uppercase tracking-wider text-accent-text">Why it works</p>
+        <p className="mt-0.5 text-[8px] leading-snug text-white/70">
+          Transformation arc — viewers project themselves into slide 1 and swipe for the payoff.
+        </p>
+      </div>
+    </WindowChrome>
+  );
+}
+
+// 03 — finished slideshow: real slides, live TikTok posting.
+function MockReady() {
+  const tiles = [
+    { img: LIB("gym/9669473.jpg"), caption: "3 exercises to build a bigger chest fast" },
+    { img: LIB("gym/4753890.jpg"), caption: "1. Incline press — upper chest first" },
+    { img: LIB("gym/7186296.jpg"), caption: "2. Weighted dips — full stretch reps" },
+    { img: LIB("food/28705621.jpg"), caption: "Fuel it right: protein within the hour" },
+    { img: LIB("gym/6389500.jpg"), caption: "3. Cable flys — squeeze at the top" },
+    { img: LIB("gym/7672103.jpg"), caption: "Start today. Your day 1 is waiting →" },
+  ];
+  return (
+    <WindowChrome
+      title="Your slideshow is ready"
+      subtitle="Captions stay editable until the moment you post"
       action={
         <div className="flex items-center gap-1.5">
-          <span className="text-[8px] text-white/40">Post to TikTok (coming soon)</span>
-          <PillButton>↓ Download All</PillButton>
+          <PillButton>↓ Download</PillButton>
+          <PillButton variant="accent">Post to TikTok</PillButton>
         </div>
       }
+      active="Slideshows"
     >
       <div className="grid grid-cols-3 gap-2">
         {tiles.map((t, i) => (
@@ -251,18 +309,18 @@ interface Feature {
 
 const FEATURES: Feature[] = [
   {
-    title: "Create Insta & TikTok Carousels",
-    desc: "Create viral TikTok slideshows with ease. Use AI to generate captions for your slides.",
-    mockup: <MockCarousel />,
+    title: "Describe it. Get a post-ready slideshow.",
+    desc: "Pick a niche, type one line, and AI writes the hook, captions, and CTA over real photos from curated collections — 9:16, ready for TikTok.",
+    mockup: <MockGenerator />,
   },
   {
-    title: "Start with AI, edit with ease",
-    desc: "Use AI to create the first slides for you — including images and captions. Then fine-tune them in the editor.",
-    mockup: <MockGenerate />,
+    title: "See what's trending. Remix it.",
+    desc: "A live chart of the fastest-climbing TikTok slideshows in your niche, with AI teardowns of why each format works — and one click remixes it into your own post.",
+    mockup: <MockTrends />,
   },
   {
-    title: "Download or post your TikTok slideshow",
-    desc: "Download your TikTok slideshow as a zip file, or send it directly to your TikTok account.",
+    title: "Post straight to TikTok",
+    desc: "Connect your account and publish without leaving the app, or download the slides as a zip. Captions stay editable right up until you post.",
     mockup: <MockReady />,
   },
 ];
