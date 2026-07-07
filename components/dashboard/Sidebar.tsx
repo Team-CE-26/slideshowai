@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/landing/Logo";
+import { ActivationChecklist } from "@/components/dashboard/grow/ActivationChecklist";
 import { signout } from "@/app/login/actions";
 
 type NavItem = { label: string; href: string; icon: React.ReactNode };
@@ -200,6 +201,11 @@ export function Sidebar({
           <NavSection title="Grow" items={GROW_NAV} pathname={pathname} />
         </div>
       </nav>
+
+      {/* Onboarding checklist */}
+      <div className="px-3 pb-3">
+        <ActivationChecklist />
+      </div>
 
       {/* Plan / credits */}
       <div className="px-3">

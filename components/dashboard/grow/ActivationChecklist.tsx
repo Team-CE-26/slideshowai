@@ -33,17 +33,17 @@ export function ActivationChecklist() {
     setDismissed(true);
   };
 
+  // Compact card sized for the sidebar (sits above the plan card).
   return (
     <section
       aria-label="Get set up"
-      className="rounded-2xl bg-[#141416] p-5 ring-1 ring-white/[0.06]"
+      className="rounded-xl border border-border bg-card p-3.5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-white">Get set up</h2>
-          <p className="mt-0.5 text-xs text-white/40">
-            {done} of {steps.length} complete — finish these and your first post
-            schedules itself.
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-white">Get set up</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            {done} of {steps.length} complete
           </p>
         </div>
         <button
@@ -54,51 +54,51 @@ export function ActivationChecklist() {
             allDone ? "Dismiss checklist" : "Complete all steps to dismiss"
           }
           title={allDone ? "Dismiss" : "Complete all steps to dismiss"}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
 
       {/* progress */}
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
         <div
           className="h-full rounded-full bg-accent transition-all duration-500"
           style={{ width: `${progress}%` }}
         />
       </div>
 
-      <ul className="mt-4 space-y-1">
+      <ul className="mt-2 space-y-0.5">
         {steps.map((step) => (
           <li key={step.id}>
             <Link
               href={STEP_HREF[step.id]}
-              className="group flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-white/[0.04]"
+              className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
             >
               <span
-                className={`grid h-6 w-6 shrink-0 place-items-center rounded-full transition-colors ${
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full transition-colors ${
                   step.done
                     ? "bg-accent text-white"
                     : "ring-1 ring-white/[0.2] group-hover:ring-white/[0.4]"
                 }`}
               >
                 {step.done && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 )}
               </span>
               <span
-                className={`flex-1 text-sm font-medium ${
-                  step.done ? "text-white/35 line-through" : "text-white/80"
+                className={`min-w-0 flex-1 truncate text-xs font-medium ${
+                  step.done ? "text-white/35 line-through" : "text-white/75"
                 }`}
               >
                 {step.label}
               </span>
               {!step.done && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-white/20 transition-all group-hover:translate-x-0.5 group-hover:text-white/50">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-white/20 transition-all group-hover:translate-x-0.5 group-hover:text-white/50">
                   <path d="M9 6l6 6-6 6" />
                 </svg>
               )}

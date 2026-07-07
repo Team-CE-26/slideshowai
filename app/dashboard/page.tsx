@@ -1,6 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
 import { Generator } from "@/components/dashboard/Generator";
-import { ActivationChecklist } from "@/components/dashboard/grow/ActivationChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +26,6 @@ export default async function DashboardPage() {
       <div className="dashboard-bolt-arc-rim" aria-hidden />
       <div className="dashboard-bolt-content w-full max-w-3xl">
         <Generator isConnected={isConnected} isLoggedIn={!!user} />
-        <div className="mt-10">
-          <ActivationChecklist />
-        </div>
       </div>
 
       {/* Dev-only: replay the first-run onboarding wizard. Not shown in prod.
