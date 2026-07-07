@@ -221,6 +221,14 @@ export interface TrendingSlideshow {
   tiktokUrl: string;
   /** One-line teardown — the teaching layer. */
   whyItWorks: string;
+  /** Format label from the ingest curation pass, e.g. "Transformation arc". */
+  hookType?: string | null;
+  /** Slide-by-slide format breakdown from the curation pass. */
+  anatomy?: { slides: string; beat: string }[] | null;
+  /** View counts across recent refreshes (oldest → newest), for sparklines. */
+  history?: number[];
+  /** This post's views vs. its niche's feed average (e.g. 12.3 = 12x). */
+  nicheMultiple?: number | null;
 }
 
 export interface TrendingFeed {

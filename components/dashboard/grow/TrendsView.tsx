@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BUSINESS_TYPES,
-  applyTemplate,
   formatCount,
   getTrendingSlideshows,
   type BusinessType,
@@ -186,6 +186,92 @@ export function TrendsView({
   );
 }
 
+// Placeholder for posts whose cover is missing or whose TikTok CDN URL has
+// expired (they rot after ~a day; the ingest cache prevents this for new
+// posts, but old rows and failed downloads still need a graceful face).
+const NICHE_GRADIENT: Record<BusinessType, string> = {
+  "Gym & Fitness": "from-indigo-500/35 to-sky-500/10",
+  "E-commerce": "from-fuchsia-500/30 to-indigo-500/10",
+  "Local Service": "from-emerald-500/30 to-teal-500/10",
+  "B2C App": "from-violet-500/35 to-indigo-500/10",
+  "Food & Dining": "from-amber-500/30 to-rose-500/10",
+};
+
+function TrendCover({
+  item,
+  className,
+}: {
+  item: TrendingSlideshow;
+  className: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+
+  // Catch images that already failed before hydration attached onError.
+  useEffect(() => {
+    const el = ref.current;
+    if (el && el.complete && el.naturalWidth === 0) setBroken(true);
+  }, []);
+
+  if (!item.cover || broken) {
+    return (
+      <div
+        aria-hidden
+        className={`absolute inset-0 grid place-items-center bg-linear-to-br ${NICHE_GRADIENT[item.niche]}`}
+      >
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-white/25"
+          aria-hidden
+        >
+          <rect x="3" y="3" width="18" height="18" rx="3" />
+          <circle cx="9" cy="9" r="2" />
+          <path d="m21 15-3.5-3.5L6 23" />
+        </svg>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      ref={ref}
+      src={item.cover}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setBroken(true)}
+      className={className}
+    />
+  );
+}
+
+// Posted within the last 24h — fresh enough that its momentum is "now".
+const HOT_HOURS = 24;
+
+function HotTodayChip() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        aria-hidden
+      >
+        <path d="M12 2c.7 3.2-.6 5-2.2 6.7C8.2 10.4 7 12 7 14.5A5.5 5.5 0 0 0 12.5 20c3.3 0 6-2.6 6-6 0-2.5-1.2-4.4-2.6-6.1C14.6 6.2 13.3 4.3 12 2Zm.5 16a3 3 0 0 1-3-3c0-1.4.7-2.3 1.6-3.3.6 1 1.5 1.7 2.4 2.5.7.6 1 1.1 1 1.8a2 2 0 0 1-2 2Z" />
+      </svg>
+      Hot today
+    </span>
+  );
+}
+
 function VelocityChip({ perHour }: { perHour: number }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-emerald-400 backdrop-blur-sm">
@@ -207,12 +293,8 @@ function TrendCard({
   return (
     <button type="button" onClick={onOpen} className="group block text-left">
       <div className="relative aspect-9/16 overflow-hidden rounded-2xl ring-1 ring-white/10 transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-accent/15 group-hover:ring-accent/50">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={item.cover}
-          alt=""
-          loading="lazy"
-          decoding="async"
+        <TrendCover
+          item={item}
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div aria-hidden className="absolute inset-x-0 bottom-0 h-2/5 bg-linear-to-t from-black/85 to-transparent" />
@@ -236,16 +318,50 @@ function TrendCard({
             </svg>
             {formatCount(item.views24h)}
           </span>
-          <span className="text-white/60">{item.postedAgoHours}h ago</span>
+          {item.postedAgoHours <= HOT_HOURS ? (
+            <HotTodayChip />
+          ) : (
+            <span className="text-white/60">{item.postedAgoHours}h ago</span>
+          )}
         </div>
       </div>
       <p className="mt-2 line-clamp-1 text-sm font-semibold text-white">{item.title}</p>
       <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
-        {item.author} · {item.niche}
+        {item.author} · {item.hookType ?? item.niche}
       </p>
     </button>
   );
 }
+
+function Sparkline({ history }: { history: number[] }) {
+  const min = Math.min(...history);
+  const max = Math.max(...history);
+  const range = Math.max(1, max - min);
+  const pts = history
+    .map(
+      (v, i) =>
+        `${((i / (history.length - 1)) * 196 + 2).toFixed(1)},${(40 - ((v - min) / range) * 34).toFixed(1)}`,
+    )
+    .join(" ");
+  const [lastX, lastY] = pts.split(" ").pop()!.split(",");
+  return (
+    <svg viewBox="0 0 200 44" className="h-11 w-full" aria-hidden>
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="#34d399"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={lastX} cy={lastY} r="3" fill="#34d399" />
+    </svg>
+  );
+}
+
+// The Generator's draft-restore slot (Generator.tsx DRAFT_KEY): it reads this
+// on mount, prefills the form, and deletes it.
+const GENERATOR_DRAFT_KEY = "slideshowai_draft";
 
 function TrendDetail({
   item,
@@ -254,13 +370,42 @@ function TrendDetail({
   item: TrendingSlideshow | null;
   onClose: () => void;
 }) {
-  const [state, setState] = useState<"idle" | "loading" | "done">("idle");
+  const router = useRouter();
+  const [state, setState] = useState<"idle" | "remixing" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const apply = async () => {
-    if (!item || state !== "idle") return;
-    setState("loading");
-    await applyTemplate(item.id);
-    setState("done");
+  const remix = async () => {
+    if (!item || state === "remixing") return;
+    setState("remixing");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/trends/remix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const data = (await res.json()) as {
+        prompt?: string;
+        slides?: string;
+        niche?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.prompt) {
+        throw new Error(data.error || "Remix failed — try again.");
+      }
+      localStorage.setItem(
+        GENERATOR_DRAFT_KEY,
+        JSON.stringify({
+          prompt: data.prompt,
+          niche: data.niche,
+          slides: data.slides,
+        }),
+      );
+      router.push("/dashboard");
+    } catch (e) {
+      setState("error");
+      setErrorMsg(e instanceof Error ? e.message : "Remix failed — try again.");
+    }
   };
 
   return (
@@ -268,8 +413,7 @@ function TrendDetail({
       {item && (
         <div className="sm:flex sm:gap-5">
           <div className="relative mx-auto aspect-9/16 w-40 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10 sm:mx-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={item.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <TrendCover item={item} className="absolute inset-0 h-full w-full object-cover" />
             <span className="absolute left-2 top-2 grid h-7 min-w-7 place-items-center rounded-full bg-accent px-1.5 text-xs font-extrabold text-white">
               #{item.rank}
             </span>
@@ -277,18 +421,41 @@ function TrendDetail({
 
           <div className="mt-4 min-w-0 flex-1 sm:mt-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              {item.postedAgoHours <= HOT_HOURS && <HotTodayChip />}
+              {(item.nicheMultiple ?? 0) >= 2 && (
+                <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-emerald-300">
+                  {Math.round(item.nicheMultiple!)}x niche average
+                </span>
+              )}
+              {item.hookType && (
+                <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-white/70">
+                  {item.hookType}
+                </span>
+              )}
               <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-white/70">
-                {formatCount(item.views24h)} views · 24h
+                {formatCount(item.views24h)} views
               </span>
               <VelocityChip perHour={item.viewsPerHour} />
-              <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-white/70">
-                {formatCount(item.likes)} likes
-              </span>
             </div>
             <p className="mt-2 text-xs text-white/35">
-              {item.author} · {item.niche} · {item.slideCount} slides ·{" "}
-              {item.postedAgoHours}h ago
+              {item.author} · {item.niche} ·{" "}
+              {item.slideCount > 0 ? `${item.slideCount} slides · ` : ""}
+              {formatCount(item.likes)} likes · {item.postedAgoHours}h ago
             </p>
+
+            {(item.history?.length ?? 0) >= 2 && (
+              <div className="mt-3 rounded-xl bg-white/[0.04] p-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] font-medium text-white/35">
+                    Views across refreshes
+                  </span>
+                  <span className="text-xs font-bold text-emerald-400">
+                    +{formatCount(item.viewsPerHour)}/hr
+                  </span>
+                </div>
+                <Sparkline history={item.history!} />
+              </div>
+            )}
 
             <div className="mt-4 rounded-xl bg-accent/[0.08] p-3.5 ring-1 ring-accent/20">
               <p className="text-[11px] font-bold uppercase tracking-wider text-accent-text">
@@ -299,22 +466,36 @@ function TrendDetail({
               </p>
             </div>
 
+            {item.anatomy && item.anatomy.length > 0 && (
+              <div className="mt-4">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-white/35">
+                  Format anatomy
+                </p>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {item.anatomy.map((b) => (
+                    <div key={b.slides} className="flex items-center gap-2.5">
+                      <span className="w-11 shrink-0 rounded-md bg-white/[0.06] py-0.5 text-center text-[11px] font-semibold text-white/60">
+                        {b.slides}
+                      </span>
+                      <span className="min-w-0 text-[13px] leading-snug text-white/70">
+                        {b.beat}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
-                onClick={() => void apply()}
-                disabled={state !== "idle"}
-                className={`flex-1 rounded-full px-5 py-3 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] ${
-                  state === "done"
-                    ? "bg-white/[0.08] text-white/50"
-                    : "bg-accent shadow-accent/30 hover:brightness-110"
-                } disabled:cursor-not-allowed`}
+                onClick={() => void remix()}
+                disabled={state === "remixing"}
+                className="flex-1 rounded-full bg-accent px-5 py-3 text-sm font-bold text-white shadow-lg shadow-accent/30 transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
               >
-                {state === "loading"
-                  ? "Loading format…"
-                  : state === "done"
-                    ? "Format ready"
-                    : "Use this format"}
+                {state === "remixing"
+                  ? "Remixing for your business…"
+                  : "Remix this trend"}
               </button>
               <a
                 href={item.tiktokUrl}
@@ -325,11 +506,8 @@ function TrendDetail({
                 Watch on TikTok
               </a>
             </div>
-            {state === "done" && (
-              <p className="mt-2 text-xs text-white/30">
-                Format loaded (stub) — the generator will prefill with this
-                structure.
-              </p>
+            {state === "error" && (
+              <p className="mt-2 text-xs text-red-400/80">{errorMsg}</p>
             )}
           </div>
         </div>
