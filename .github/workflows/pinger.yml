@@ -1,0 +1,27 @@
+# Scheduled pinger — works around Vercel Hobby's once-daily cron limit.
+# Requires the repo secret CRON_SECRET (Settings → Secrets and variables →
+# Actions), set to the same value as the Vercel env var.
+#
+# - Every 10 minutes: publish any due scheduled posts.
+# - 13:00 UTC daily: second trends refresh (Vercel's own cron covers 01:00).
+name: Scheduled pinger
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish due scheduled posts
+        run: |
+          curl -sf -m 120 -X POST \
+            "https://slideshowai-three.vercel.app/api/cron/publish-scheduled?secret=${{ secrets.CRON_SECRET }}"
+      - name: Refresh trends (13:00 UTC run only)
+        if: github.event.schedule == '0 13 * * *'
+        run: |
+          curl -sf -m 300 -X POST \
+            "https://slideshowai-three.vercel.app/api/cron/refresh-trends?secret=${{ secrets.CRON_SECRET }}"

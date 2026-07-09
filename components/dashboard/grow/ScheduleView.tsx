@@ -1,28 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  MOCK_ACCOUNTS,
-  MOCK_GENERATED,
-  MOCK_SCHEDULED,
-  schedulePost,
-  type GeneratedSlideshow,
-} from "@/lib/mock-data";
+import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const CAPTION_MAX = 2200;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-interface Post {
+export interface ScheduledPost {
   id: string;
-  slideshowId: string;
-  date: string; // yyyy-mm-dd
-  time: string; // HH:MM
+  slideshow_id: string;
   caption: string;
-  accountId: string;
+  scheduled_at: string; // ISO
+  status: "queued" | "publishing" | "posted" | "failed";
+  fail_reason: string | null;
+  posted_at: string | null;
+}
+
+export interface PickableSlideshow {
+  id: string;
+  title: string;
+  created_at: string;
 }
 
 // Local-date ISO (yyyy-mm-dd). toISOString() would shift to UTC and put
@@ -44,36 +42,31 @@ function addDays(base: Date, days: number): Date {
   return d;
 }
 
-const slideshowById = (id: string): GeneratedSlideshow | undefined =>
-  MOCK_GENERATED.find((s) => s.id === id);
+const localDate = (isoTs: string) => iso(new Date(isoTs));
+const localTime = (isoTs: string) =>
+  new Date(isoTs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
-export function ScheduleView() {
-  const [posts, setPosts] = useState<Post[] | null>(null); // null = loading
+const STATUS_STYLES: Record<ScheduledPost["status"], string> = {
+  queued: "bg-white/[0.08] text-white/60",
+  publishing: "bg-amber-400/15 text-amber-300",
+  posted: "bg-emerald-400/15 text-emerald-300",
+  failed: "bg-red-400/15 text-red-300",
+};
+
+export function ScheduleView({
+  connected,
+  initialPosts,
+  slideshows,
+}: {
+  connected: boolean;
+  initialPosts: ScheduledPost[];
+  slideshows: PickableSlideshow[];
+}) {
+  const [posts, setPosts] = useState<ScheduledPost[]>(initialPosts);
   const [weekOffset, setWeekOffset] = useState(0);
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
-  const [today, setToday] = useState("");
-
-  // Dates are materialized client-side after mount: keeps SSR deterministic
-  // and gives the skeleton state a real render.
-  useEffect(() => {
-    const monday = mondayOf(new Date());
-    const t = setTimeout(() => {
-      setToday(iso(new Date()));
-      setPosts(
-        MOCK_SCHEDULED.map((p) => ({
-          id: p.id,
-          slideshowId: p.slideshowId,
-          date: iso(addDays(monday, p.dayOffset)),
-          time: p.time,
-          caption: p.caption,
-          accountId: p.accountId,
-        })),
-      );
-    }, 500);
-    return () => clearTimeout(t);
-  }, []);
+  const today = iso(new Date());
 
   const week = useMemo(() => {
     const monday = mondayOf(addDays(new Date(), weekOffset * 7));
@@ -81,43 +74,52 @@ export function ScheduleView() {
   }, [weekOffset]);
 
   const weekPosts = useMemo(() => {
-    if (!posts) return [];
     const days = new Set(week.map(iso));
     return posts
-      .filter((p) => days.has(p.date))
-      .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+      .filter((p) => days.has(localDate(p.scheduled_at)))
+      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   }, [posts, week]);
 
   const weekLabel = `${week[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${week[6].toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 
-  const account = MOCK_ACCOUNTS[0];
+  const cancel = async (id: string) => {
+    const res = await fetch(`/api/schedule/${id}`, { method: "DELETE" });
+    if (res.ok) setPosts((cur) => cur.filter((p) => p.id !== id));
+  };
 
   return (
     <div>
-      {/* connected accounts */}
+      {/* connection state */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white/[0.02] p-4 ring-1 ring-white/[0.05]">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs font-semibold uppercase tracking-wider text-white/30">
-            Accounts
+            Account
           </span>
-          <span className="flex items-center gap-2 rounded-full bg-white/[0.06] py-1.5 pl-1.5 pr-3.5">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-linear-to-br from-accent to-fuchsia-500 text-[11px] font-bold text-white">
-              {account.displayName.charAt(0)}
+          {connected ? (
+            <span className="flex items-center gap-2 rounded-full bg-white/[0.06] py-1.5 pl-1.5 pr-3.5">
+              <span className="grid h-7 w-7 place-items-center rounded-full bg-linear-to-br from-accent to-fuchsia-500 text-[11px] font-bold text-white">
+                T
+              </span>
+              <span className="text-sm font-semibold text-white">TikTok</span>
+              <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Connected
+              </span>
             </span>
-            <span className="text-sm font-semibold text-white">{account.handle}</span>
-            <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Connected
+          ) : (
+            <span className="text-sm text-white/45">
+              No TikTok account connected — scheduled posts need one.
             </span>
-          </span>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => setConnectOpen(true)}
-          className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/[0.14]"
-        >
-          Connect TikTok
-        </button>
+        {!connected && (
+          <a
+            href={`/api/auth/tiktok?return_to=${encodeURIComponent("/dashboard/schedule")}`}
+            className="rounded-full bg-accent px-4 py-2 text-sm font-bold text-white shadow-lg shadow-accent/30 transition-all hover:brightness-110"
+          >
+            Connect TikTok
+          </a>
+        )}
       </div>
 
       {/* controls */}
@@ -154,7 +156,6 @@ export function ScheduleView() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* view toggle */}
           <div className="flex rounded-full bg-white/[0.06] p-1">
             {(["calendar", "list"] as const).map((v) => (
               <button
@@ -182,18 +183,14 @@ export function ScheduleView() {
 
       {/* calendar / list */}
       <div className="mt-5">
-        {posts === null ? (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-            {Array.from({ length: 7 }, (_, i) => (
-              <Skeleton key={i} className="h-48 rounded-2xl" />
-            ))}
-          </div>
-        ) : view === "calendar" ? (
+        {view === "calendar" ? (
           <>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
               {week.map((day, i) => {
                 const dayIso = iso(day);
-                const dayPosts = weekPosts.filter((p) => p.date === dayIso);
+                const dayPosts = weekPosts.filter(
+                  (p) => localDate(p.scheduled_at) === dayIso,
+                );
                 const isToday = dayIso === today;
                 return (
                   <div
@@ -216,7 +213,7 @@ export function ScheduleView() {
                     </p>
                     <div className="space-y-2">
                       {dayPosts.map((p) => (
-                        <PostCard key={p.id} post={p} compact />
+                        <PostCard key={p.id} post={p} onCancel={cancel} compact />
                       ))}
                     </div>
                   </div>
@@ -254,7 +251,7 @@ export function ScheduleView() {
         ) : (
           <div className="space-y-2">
             {weekPosts.map((p) => (
-              <PostCard key={p.id} post={p} />
+              <PostCard key={p.id} post={p} onCancel={cancel} />
             ))}
           </div>
         )}
@@ -264,81 +261,101 @@ export function ScheduleView() {
         open={scheduleOpen}
         onClose={() => setScheduleOpen(false)}
         defaultDate={today}
-        onScheduled={(p) => setPosts((cur) => [...(cur ?? []), p])}
+        connected={connected}
+        slideshows={slideshows}
+        onScheduled={(p) =>
+          setPosts((cur) =>
+            [...cur, p].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
+          )
+        }
       />
-
-      {/* Connect TikTok — clearly-labeled OAuth stub */}
-      <Modal
-        open={connectOpen}
-        onClose={() => setConnectOpen(false)}
-        title="Connect a TikTok account"
-        width="max-w-md"
-      >
-        <ol className="space-y-3">
-          {[
-            "You'll be sent to TikTok to sign in and approve SlideShowAI.",
-            "TikTok hands back a secure token — we never see your password.",
-            "Scheduled posts publish through TikTok's official Content Posting API.",
-          ].map((step, i) => (
-            <li key={i} className="flex gap-3 text-sm leading-relaxed text-white/60">
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/[0.06] text-xs font-bold text-white">
-                {i + 1}
-              </span>
-              {step}
-            </li>
-          ))}
-        </ol>
-        <button
-          type="button"
-          disabled
-          className="mt-5 w-full cursor-not-allowed rounded-full bg-white/[0.08] px-5 py-3 text-sm font-bold text-white/40"
-        >
-          Continue to TikTok (stub — OAuth not wired yet)
-        </button>
-      </Modal>
     </div>
   );
 }
 
-function PostCard({ post, compact = false }: { post: Post; compact?: boolean }) {
-  const show = slideshowById(post.slideshowId);
+function StatusChip({ post }: { post: ScheduledPost }) {
+  return (
+    <span
+      title={post.status === "failed" ? (post.fail_reason ?? undefined) : undefined}
+      className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${STATUS_STYLES[post.status]}`}
+    >
+      {post.status}
+    </span>
+  );
+}
+
+function PostCard({
+  post,
+  onCancel,
+  compact = false,
+}: {
+  post: ScheduledPost;
+  onCancel: (id: string) => void;
+  compact?: boolean;
+}) {
+  // Session-authed on-demand render of the slideshow's first slide.
+  const thumb = `/api/slideshows/${post.slideshow_id}/render/0`;
   if (compact) {
     return (
-      <div className="rounded-xl bg-[#1c1c1e] p-1.5 ring-1 ring-white/[0.06]">
+      <div className="group/card rounded-xl bg-[#1c1c1e] p-1.5 ring-1 ring-white/[0.06]">
         <div className="flex gap-2">
-          {show && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={show.thumbnail} alt="" loading="lazy" decoding="async" className="h-12 w-8 shrink-0 rounded-md object-cover" />
-          )}
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold text-accent-text">{post.time}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={thumb} alt="" loading="lazy" decoding="async" className="h-12 w-8 shrink-0 rounded-md object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center justify-between gap-1 text-[11px] font-bold text-accent-text">
+              {localTime(post.scheduled_at)}
+              <StatusChip post={post} />
+            </p>
             <p className="line-clamp-2 text-[11px] leading-tight text-white/60">
-              {post.caption}
+              {post.caption || "No caption"}
             </p>
           </div>
         </div>
+        {post.status === "queued" && (
+          <button
+            type="button"
+            onClick={() => void onCancel(post.id)}
+            className="mt-1 hidden w-full rounded-md py-0.5 text-[10px] font-semibold text-white/30 transition-colors hover:bg-white/[0.06] hover:text-red-300 group-hover/card:block"
+          >
+            Cancel
+          </button>
+        )}
       </div>
     );
   }
   return (
     <div className="flex items-center gap-4 rounded-2xl bg-[#141416] p-3 ring-1 ring-white/[0.06]">
-      {show && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={show.thumbnail} alt="" loading="lazy" decoding="async" className="h-16 w-11 shrink-0 rounded-lg object-cover" />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={thumb} alt="" loading="lazy" decoding="async" className="h-16 w-11 shrink-0 rounded-lg object-cover" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-white">{show?.title ?? "Slideshow"}</p>
-        <p className="mt-0.5 line-clamp-1 text-xs text-white/40">{post.caption}</p>
+        <p className="flex items-center gap-2 text-sm font-semibold text-white">
+          {localTime(post.scheduled_at)}
+          <StatusChip post={post} />
+        </p>
+        <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
+          {post.caption || "No caption"}
+        </p>
+        {post.status === "failed" && post.fail_reason && (
+          <p className="mt-0.5 line-clamp-1 text-xs text-red-400/80">{post.fail_reason}</p>
+        )}
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-bold text-accent-text">{post.time}</p>
         <p className="text-xs text-white/35">
-          {new Date(`${post.date}T00:00:00`).toLocaleDateString("en-US", {
+          {new Date(post.scheduled_at).toLocaleDateString("en-US", {
             weekday: "short",
             month: "short",
             day: "numeric",
           })}
         </p>
+        {post.status === "queued" && (
+          <button
+            type="button"
+            onClick={() => void onCancel(post.id)}
+            className="mt-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white/40 transition-colors hover:bg-white/[0.06] hover:text-red-300"
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );
@@ -348,68 +365,100 @@ function SchedulePostDialog({
   open,
   onClose,
   defaultDate,
+  connected,
+  slideshows,
   onScheduled,
 }: {
   open: boolean;
   onClose: () => void;
   defaultDate: string;
-  onScheduled: (post: Post) => void;
+  connected: boolean;
+  slideshows: PickableSlideshow[];
+  onScheduled: (post: ScheduledPost) => void;
 }) {
   const [slideshowId, setSlideshowId] = useState<string | null>(null);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("09:00");
   const [caption, setCaption] = useState("");
-  const [accountId, setAccountId] = useState(MOCK_ACCOUNTS[0].id);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   // Untouched field falls back to today — no effect needed to sync it.
   const effectiveDate = date || defaultDate;
-
-  const valid = slideshowId && effectiveDate && time && !saving;
+  const valid = slideshowId && effectiveDate && time && connected && !saving;
 
   const submit = async () => {
     if (!valid || !slideshowId) return;
     setSaving(true);
-    const input = { slideshowId, date: effectiveDate, time, caption, accountId };
-    await schedulePost(input);
-    onScheduled({ id: `local-${date}-${time}-${slideshowId}`, ...input });
+    setError("");
+    try {
+      const scheduledAt = new Date(`${effectiveDate}T${time}`).toISOString();
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slideshowId, scheduledAt, caption }),
+      });
+      const data = (await res.json()) as { post?: ScheduledPost; error?: string };
+      if (!res.ok || !data.post) throw new Error(data.error || "Scheduling failed.");
+      onScheduled(data.post);
+      onClose();
+      setSlideshowId(null);
+      setCaption("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scheduling failed.");
+    }
     setSaving(false);
-    onClose();
-    setSlideshowId(null);
-    setCaption("");
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Schedule a post" width="max-w-xl">
-      {/* pick a generated slideshow */}
+      {!connected && (
+        <p className="mb-4 rounded-xl bg-amber-400/10 px-3.5 py-2.5 text-sm text-amber-300">
+          Connect your TikTok account first — scheduled posts publish through it.
+        </p>
+      )}
+
+      {/* pick a saved slideshow */}
       <p className="text-xs font-semibold uppercase tracking-wider text-white/30">
         Slideshow
       </p>
-      <div className="no-scrollbar -mx-1 mt-2 flex gap-2.5 overflow-x-auto px-1 pb-1">
-        {MOCK_GENERATED.map((s) => {
-          const active = slideshowId === s.id;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSlideshowId(s.id)}
-              className={`w-24 shrink-0 text-left transition-all ${active ? "" : "opacity-70 hover:opacity-100"}`}
-            >
-              <span
-                className={`block aspect-9/16 overflow-hidden rounded-xl transition-all ${
-                  active ? "ring-2 ring-accent" : "ring-1 ring-white/[0.08]"
-                }`}
+      {slideshows.length === 0 ? (
+        <p className="mt-2 text-sm text-white/45">
+          No saved slideshows yet — generate one first.
+        </p>
+      ) : (
+        <div className="no-scrollbar -mx-1 mt-2 flex gap-2.5 overflow-x-auto px-1 pb-1">
+          {slideshows.map((s) => {
+            const active = slideshowId === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSlideshowId(s.id)}
+                className={`w-24 shrink-0 text-left transition-all ${active ? "" : "opacity-70 hover:opacity-100"}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={s.thumbnail} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </span>
-              <span className="mt-1 line-clamp-1 block text-[11px] font-medium text-white/60">
-                {s.title}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span
+                  className={`block aspect-9/16 overflow-hidden rounded-xl transition-all ${
+                    active ? "ring-2 ring-accent" : "ring-1 ring-white/[0.08]"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/slideshows/${s.id}/render/0`}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+                <span className="mt-1 line-clamp-1 block text-[11px] font-medium text-white/60">
+                  {s.title}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* date + time */}
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -461,17 +510,13 @@ function SchedulePostDialog({
         />
       </label>
 
-      {/* account */}
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-white/30">
-          Post to
-        </span>
-        <Dropdown
-          value={accountId}
-          onChange={setAccountId}
-          options={MOCK_ACCOUNTS.map((a) => ({ value: a.id, label: a.handle }))}
-        />
-      </div>
+      <p className="mt-3 text-xs text-white/30">
+        Posts publish privately (SELF_ONLY) until the app passes TikTok&apos;s
+        audit — same as immediate posting. The queue is checked every ~10
+        minutes, so exact minutes are approximate.
+      </p>
+
+      {error && <p className="mt-3 text-sm text-red-400/90">{error}</p>}
 
       <div className="mt-5 flex justify-end gap-2">
         <button
