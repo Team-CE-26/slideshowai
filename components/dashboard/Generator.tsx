@@ -208,6 +208,15 @@ export function Generator({
   const [editBump, setEditBump] = useState(0);
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [restoredFromDraft, setRestoredFromDraft] = useState(false);
+  // "Help me find my hook" — plain-language assist mode. The user describes
+  // their business/goal; /api/assist returns 3 hook options with a why-it-works
+  // explanation; picking one prefills the generator (review-first, no auto-gen).
+  const [assistMode, setAssistMode] = useState(false);
+  const [assistLoading, setAssistLoading] = useState(false);
+  const [assistError, setAssistError] = useState("");
+  const [assistHooks, setAssistHooks] = useState<
+    { hook: string; why: string; niche: string; slides: string; prompt: string }[] | null
+  >(null);
   const [isFocused, setIsFocused] = useState(false);
   const [animText, setAnimText] = useState("");
   const [activeCardIdx, setActiveCardIdx] = useState(N); // gym starts centered (copy 1)
@@ -323,6 +332,47 @@ export function Generator({
       setRestoredFromDraft(true);
     } catch {}
   }, [isLoggedIn]);
+
+  async function handleAssist() {
+    if (!isLoggedIn) {
+      setShowAuthGate(true);
+      return;
+    }
+    if (assistLoading) return;
+    setAssistLoading(true);
+    setAssistError("");
+    setAssistHooks(null);
+    try {
+      const res = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: prompt }),
+      });
+      const data = (await res.json()) as {
+        hooks?: { hook: string; why: string; niche: string; slides: string; prompt: string }[];
+        error?: string;
+      };
+      if (!res.ok || !data.hooks?.length) {
+        throw new Error(data.error || "Couldn't come up with hooks — try again.");
+      }
+      setAssistHooks(data.hooks);
+    } catch (e) {
+      setAssistError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setAssistLoading(false);
+    }
+  }
+
+  // Picking a hook prefills the generator (review-first — the user still hits
+  // generate) and exits assist mode.
+  function pickHook(h: { hook: string; why: string; niche: string; slides: string; prompt: string }) {
+    setNiche(h.niche);
+    setSlides(h.slides);
+    setPrompt(h.prompt);
+    setAssistMode(false);
+    setAssistHooks(null);
+    promptRef.current?.focus();
+  }
 
   async function handleGenerate() {
     if (!isLoggedIn) {
@@ -467,12 +517,17 @@ export function Generator({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                void handleGenerate();
+                if (assistMode) void handleAssist();
+                else void handleGenerate();
               }
             }}
             rows={3}
             placeholder=""
-            aria-label="Describe your slideshow idea"
+            aria-label={
+              assistMode
+                ? "Describe your business and goal"
+                : "Describe your slideshow idea"
+            }
             className="w-full resize-none bg-transparent px-5 py-4 text-[15px] text-white/90 focus:outline-none"
           />
           {!isFocused && !prompt && (
@@ -480,41 +535,112 @@ export function Generator({
               className="pointer-events-none absolute left-5 top-4 flex select-none items-start text-[15px] text-white/30"
               aria-hidden
             >
-              <span>{animText}</span>
-              <span className="animate-cursor ml-px inline-block h-[1.15em] w-px translate-y-px bg-white/35" />
+              {assistMode ? (
+                <span>
+                  Tell us about your business and what you want to achieve…
+                </span>
+              ) : (
+                <>
+                  <span>{animText}</span>
+                  <span className="animate-cursor ml-px inline-block h-[1.15em] w-px translate-y-px bg-white/35" />
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* Try suggestions — right under textarea */}
         <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
-          <span className="shrink-0 text-[11px] text-white/25">Try:</span>
-          {suggestions.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setPrompt(t);
-                promptRef.current?.focus();
-              }}
-              className="shrink-0 rounded-full border border-white/9 bg-white/3 px-3 py-1 text-[11px] text-white/40 transition-colors hover:border-white/20 hover:text-white/80"
-            >
-              {t}
-            </button>
-          ))}
+          {!assistMode && (
+            <>
+              <span className="shrink-0 text-[11px] text-white/25">Try:</span>
+              {suggestions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    setPrompt(t);
+                    promptRef.current?.focus();
+                  }}
+                  className="shrink-0 rounded-full border border-white/9 bg-white/3 px-3 py-1 text-[11px] text-white/40 transition-colors hover:border-white/20 hover:text-white/80"
+                >
+                  {t}
+                </button>
+              ))}
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setAssistMode((v) => {
+                const next = !v;
+                if (!next) {
+                  setAssistHooks(null);
+                  setAssistError("");
+                }
+                return next;
+              });
+              promptRef.current?.focus();
+            }}
+            aria-pressed={assistMode}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors ${
+              assistMode
+                ? "border-accent/50 bg-accent/10 text-accent-text"
+                : "border-white/9 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/80"
+            }`}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2l1.9 5.7a2 2 0 0 0 1.3 1.3L21 11l-5.8 2a2 2 0 0 0-1.3 1.3L12 20l-1.9-5.7A2 2 0 0 0 8.8 13L3 11l5.8-2a2 2 0 0 0 1.3-1.3L12 2z" />
+            </svg>
+            {assistMode ? "Back to normal mode" : "Help me find my hook"}
+          </button>
         </div>
+
+        {/* Assist results — 3 hook options with why-it-works explanations */}
+        {assistMode && (assistHooks || assistError) && (
+          <div className="space-y-2 px-5 pb-4">
+            {assistError && (
+              <p className="text-xs text-red-400">{assistError}</p>
+            )}
+            {assistHooks?.map((h) => (
+              <button
+                key={h.hook}
+                type="button"
+                onClick={() => pickHook(h)}
+                className="group block w-full rounded-xl bg-white/[0.03] px-4 py-3 text-left transition-colors hover:bg-white/[0.06]"
+              >
+                <span className="block text-sm font-semibold text-white">
+                  {h.hook}
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-white/40">
+                  {h.why}
+                </span>
+                <span className="mt-1.5 block text-[10px] font-medium text-accent-text opacity-0 transition-opacity group-hover:opacity-100">
+                  Use this hook →
+                </span>
+              </button>
+            ))}
+            {assistHooks && (
+              <p className="pt-0.5 text-[10px] text-white/20">
+                Pick one — we&apos;ll fill everything in. You can still tweak it before generating.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Footer: hint + send button */}
         <div className="flex items-center justify-between px-5 pb-5">
-          <span className="text-[10px] text-white/20">{"⌘↵"} to generate</span>
+          <span className="text-[10px] text-white/20">
+            {"⌘↵"} {assistMode ? "for hook ideas" : "to generate"}
+          </span>
           <button
             type="button"
-            onClick={() => void handleGenerate()}
-            disabled={isLoading}
-            aria-label="Generate"
+            onClick={() => void (assistMode ? handleAssist() : handleGenerate())}
+            disabled={isLoading || assistLoading}
+            aria-label={assistMode ? "Get hook ideas" : "Generate"}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isLoading ? (
+            {isLoading || assistLoading ? (
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
                 <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
