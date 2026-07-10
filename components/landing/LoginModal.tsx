@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { GoogleButton } from "@/components/auth/GoogleButton";
@@ -14,9 +13,11 @@ import { inputClass, submitClass, bannerError } from "@/components/auth/styles";
 export function LoginModal({
   open,
   onClose,
+  onSwitchToSignup,
 }: {
   open: boolean;
   onClose: () => void;
+  onSwitchToSignup: () => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -96,9 +97,13 @@ export function LoginModal({
 
       <p className="mt-5 text-center text-sm text-muted">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="font-semibold text-accent-text hover:underline">
+        <button
+          type="button"
+          onClick={onSwitchToSignup}
+          className="font-semibold text-accent-text hover:underline"
+        >
           Sign up
-        </Link>
+        </button>
       </p>
     </Modal>
   );

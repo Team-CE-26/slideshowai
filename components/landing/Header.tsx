@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { Button } from "../ui/Button";
 import { LoginModal } from "./LoginModal";
+import { SignupModal } from "./SignupModal";
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authView, setAuthView] = useState<"login" | "signup" | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -47,18 +48,34 @@ export function Header() {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => setLoginOpen(true)}
+            onClick={() => setAuthView("login")}
             className="hidden text-sm font-medium text-muted transition-colors hover:text-foreground sm:block"
           >
             Log in
           </button>
-          <Button href="/dashboard" size="md">
+          <Button
+            href="/signup"
+            size="md"
+            onClick={(e) => {
+              e.preventDefault();
+              setAuthView("signup");
+            }}
+          >
             Get Started
           </Button>
         </div>
       </div>
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <LoginModal
+        open={authView === "login"}
+        onClose={() => setAuthView(null)}
+        onSwitchToSignup={() => setAuthView("signup")}
+      />
+      <SignupModal
+        open={authView === "signup"}
+        onClose={() => setAuthView(null)}
+        onSwitchToLogin={() => setAuthView("login")}
+      />
     </header>
   );
 }
