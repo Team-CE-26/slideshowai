@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ACCENT,
   layoutSlide,
   SLIDE_H,
   SLIDE_W,
@@ -62,71 +61,6 @@ function CaptionLayer({ layout, scale }: { layout: SlideLayout; scale: number })
           pointerEvents: "none",
         }}
       />
-
-      {/* CTA pill (behind text) */}
-      {layout.pill && (
-        <div
-          style={{
-            position: "absolute",
-            left: layout.pill.left * scale,
-            top: layout.pill.top * scale,
-            width: layout.pill.width * scale,
-            height: layout.pill.height * scale,
-            background: ACCENT,
-            borderRadius: (layout.pill.height * scale) / 2,
-            boxShadow: shadow,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-
-      {/* title accent rule */}
-      {layout.rule && (
-        <div
-          style={{
-            position: "absolute",
-            left: layout.rule.left * scale,
-            top: layout.rule.top * scale,
-            width: layout.rule.width * scale,
-            height: layout.rule.height * scale,
-            background: ACCENT,
-            borderRadius: (layout.rule.height * scale) / 2,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-
-      {/* number badge */}
-      {layout.badge && (
-        <div
-          style={{
-            position: "absolute",
-            left: layout.badge.box.left * scale,
-            top: layout.badge.box.top * scale,
-            width: layout.badge.box.width * scale,
-            height: layout.badge.box.height * scale,
-            background: ACCENT,
-            borderRadius: 28 * scale,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: shadow,
-            pointerEvents: "none",
-          }}
-        >
-          <span
-            style={{
-              color: "#fff",
-              fontFamily: "var(--font-caption), sans-serif",
-              fontWeight: 800,
-              fontSize: layout.badge.fontSize * scale,
-              lineHeight: 1,
-            }}
-          >
-            {layout.badge.label}
-          </span>
-        </div>
-      )}
 
       {/* caption text — anchored exactly like SVG text-anchor */}
       <div

@@ -16,7 +16,6 @@
 
 export const SLIDE_W = 1080;
 export const SLIDE_H = 1920;
-export const ACCENT = "#6366f1";
 
 // Owned here (the pure module) so both the client overlay and the OpenAI-backed
 // listicle generator can share the type without pulling each other's deps in.
@@ -56,24 +55,15 @@ interface RoleStyle {
   minChars: number;
 }
 
-// Ported verbatim from the original buildSvg() so DEFAULT_POS reproduces the
-// previous styling (oversized title, number-badge reasons/plug, CTA pill).
+// Classic TikTok caption look: plain white text in the caption family, no
+// decorations. Numbered slides carry their number inline ("1. …") in the same
+// font as the sentence.
 const ROLE_STYLE: Record<SlideRole, RoleStyle> = {
   title: { fontSize: 100, lineHeightFactor: 1.12, fontWeight: 800, letterSpacing: -1, charWidth: 0.54, widthFrac: 0.84, maxLines: 4, minChars: 8 },
   reason: { fontSize: 62, lineHeightFactor: 1.16, fontWeight: 700, letterSpacing: -0.5, charWidth: 0.54, widthFrac: 0.82, maxLines: 4, minChars: 10 },
   plug: { fontSize: 62, lineHeightFactor: 1.16, fontWeight: 700, letterSpacing: -0.5, charWidth: 0.54, widthFrac: 0.82, maxLines: 4, minChars: 10 },
   cta: { fontSize: 58, lineHeightFactor: 1.12, fontWeight: 800, letterSpacing: 0, charWidth: 0.56, widthFrac: 0.7, maxLines: 2, minChars: 10 },
 };
-
-// Decoration constants (1080-space px), matching the originals.
-const TITLE_RULE_W = 120;
-const TITLE_RULE_H = 8;
-const TITLE_RULE_GAP = 36;
-const BADGE = 132;
-const BADGE_GAP = 32;
-const BADGE_FONT = 78;
-const CTA_PAD_X = 60;
-const CTA_PAD_Y = 32;
 
 export interface Box {
   left: number;
@@ -85,25 +75,18 @@ export interface Box {
 export interface SlideLayout {
   role: SlideRole;
   align: Align;
-  accent: string;
   fontSize: number;
   lineHeight: number;
   fontWeight: number;
   letterSpacing: number;
   lines: string[];
-  /** bounding box of the whole block (text + decorations), post-clamp. */
+  /** bounding box of the whole block (= the text), post-clamp. */
   block: Box;
   /** where the text lines flow. */
   textBox: Box;
   /** x coordinate the text is anchored to (matches `textAnchor`). */
   anchorX: number;
   textAnchor: "start" | "middle" | "end";
-  /** title accent rule, if role === "title". */
-  rule?: Box;
-  /** number badge, if role === "reason" | "plug". */
-  badge?: { box: Box; label: string; fontSize: number };
-  /** CTA pill, if role === "cta". */
-  pill?: Box;
   /** localized radial scrim that follows the text wherever it lands. */
   scrim: { cx: number; cy: number; rx: number; ry: number };
 }
@@ -161,29 +144,27 @@ export function layoutSlide(opts: {
   const lineHeight = Math.round(fontSize * st.lineHeightFactor);
   const widthFrac = clamp(pos.maxWidth ?? st.widthFrac, 0.2, 0.96);
 
+  // Numbered slides carry the number inline, same font as the sentence
+  // ("1. You're under-eating protein"), unless the text is already numbered.
+  const text =
+    opts.number != null &&
+    (opts.role === "reason" || opts.role === "plug") &&
+    !/^\s*\d+\s*[.):]/.test(opts.text)
+      ? `${opts.number}. ${opts.text}`
+      : opts.text;
+
   const maxChars = Math.max(
     st.minChars,
     Math.floor((SLIDE_W * widthFrac) / (fontSize * st.charWidth)),
   );
-  const lines = wrapText(opts.text, maxChars, st.maxLines);
+  const lines = wrapText(text, maxChars, st.maxLines);
   const longest = lines.reduce((a, b) => (b.length > a.length ? b : a), "");
   const textW = clamp(longest.length * fontSize * st.charWidth, fontSize, SLIDE_W * 0.92);
   const textH = lines.length * lineHeight;
 
-  // --- block dimensions (include decorations) ---
-  let blockW: number;
-  let blockH: number;
-  if (opts.role === "title") {
-    blockW = Math.max(textW, TITLE_RULE_W);
-    blockH = TITLE_RULE_H + TITLE_RULE_GAP + textH;
-  } else if (opts.role === "cta") {
-    const pillW = Math.min(SLIDE_W * 0.9, textW + CTA_PAD_X * 2);
-    blockW = pillW;
-    blockH = textH + CTA_PAD_Y * 2;
-  } else {
-    blockW = Math.max(textW, BADGE);
-    blockH = BADGE + BADGE_GAP + textH;
-  }
+  // --- block = the text itself (no decorations) ---
+  const blockW = textW;
+  const blockH = textH;
 
   // --- anchor the block, then clamp it fully on-canvas ---
   // Vertical: anchor y is the block's vertical center.
@@ -199,50 +180,20 @@ export function layoutSlide(opts: {
 
   const block: Box = { left, top, width: blockW, height: blockH };
 
-  // --- children, positioned within the (clamped) block ---
-  let rule: Box | undefined;
-  let badge: SlideLayout["badge"];
-  let pill: Box | undefined;
-  let textBox: Box;
-  let anchorX: number;
-  let textAnchor: "start" | "middle" | "end";
-
-  if (opts.role === "title") {
-    rule = {
-      left: alignChild(align, left, blockW, TITLE_RULE_W),
-      top,
-      width: TITLE_RULE_W,
-      height: TITLE_RULE_H,
-    };
-    textBox = {
-      left: alignChild(align, left, blockW, textW),
-      top: top + TITLE_RULE_H + TITLE_RULE_GAP,
-      width: textW,
-      height: textH,
-    };
-    textAnchor = align === "left" ? "start" : align === "right" ? "end" : "middle";
-    anchorX = align === "left" ? textBox.left : align === "right" ? textBox.left + textW : textBox.left + textW / 2;
-  } else if (opts.role === "cta") {
-    pill = { left, top, width: blockW, height: blockH };
-    // Text is always centered inside the pill; the pill itself moves with align.
-    textBox = { left: left + (blockW - textW) / 2, top: top + CTA_PAD_Y, width: textW, height: textH };
-    textAnchor = "middle";
-    anchorX = left + blockW / 2;
-  } else {
-    badge = {
-      box: { left: alignChild(align, left, blockW, BADGE), top, width: BADGE, height: BADGE },
-      label: opts.number != null ? String(opts.number) : "",
-      fontSize: BADGE_FONT,
-    };
-    textBox = {
-      left: alignChild(align, left, blockW, textW),
-      top: top + BADGE + BADGE_GAP,
-      width: textW,
-      height: textH,
-    };
-    textAnchor = align === "left" ? "start" : align === "right" ? "end" : "middle";
-    anchorX = align === "left" ? textBox.left : align === "right" ? textBox.left + textW : textBox.left + textW / 2;
-  }
+  const textBox: Box = {
+    left: alignChild(align, left, blockW, textW),
+    top,
+    width: textW,
+    height: textH,
+  };
+  const textAnchor: "start" | "middle" | "end" =
+    align === "left" ? "start" : align === "right" ? "end" : "middle";
+  const anchorX =
+    align === "left"
+      ? textBox.left
+      : align === "right"
+        ? textBox.left + textW
+        : textBox.left + textW / 2;
 
   // Localized scrim: an ellipse sized to the block plus soft padding, centered
   // on the block. Follows the text wherever it lands so captions stay legible.
@@ -256,7 +207,6 @@ export function layoutSlide(opts: {
   return {
     role: opts.role,
     align,
-    accent: ACCENT,
     fontSize,
     lineHeight,
     fontWeight: st.fontWeight,
@@ -266,9 +216,6 @@ export function layoutSlide(opts: {
     textBox,
     anchorX,
     textAnchor,
-    rule,
-    badge,
-    pill,
     scrim,
   };
 }

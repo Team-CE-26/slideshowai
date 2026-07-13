@@ -65,25 +65,13 @@ function textSvg(L: SlideLayout): string {
   return `<text x="${L.anchorX}" y="${baseline}" text-anchor="${L.textAnchor}" font-family="${CAPTION_FAMILY}" font-weight="${L.fontWeight}" font-size="${L.fontSize}" letter-spacing="${L.letterSpacing}" fill="#ffffff" filter="url(#shadow)">${tspans(L.lines, L.anchorX, L.lineHeight)}</text>`;
 }
 
+// Classic TikTok caption: scrim + plain white text only. No accent decorations
+// — numbered slides carry their number inline in the text (see layoutSlide).
 function buildSvg(L: SlideLayout): string {
   const parts: string[] = [
     `<ellipse cx="${L.scrim.cx}" cy="${L.scrim.cy}" rx="${L.scrim.rx}" ry="${L.scrim.ry}" fill="url(#scrim)"/>`,
+    textSvg(L),
   ];
-
-  if (L.rule) {
-    parts.push(
-      `<rect x="${L.rule.left}" y="${L.rule.top}" width="${L.rule.width}" height="${L.rule.height}" rx="${L.rule.height / 2}" fill="${L.accent}"/>`,
-    );
-  }
-  if (L.pill) {
-    parts.push(
-      `<rect x="${L.pill.left}" y="${L.pill.top}" width="${L.pill.width}" height="${L.pill.height}" rx="${L.pill.height / 2}" fill="${L.accent}" filter="url(#shadow)"/>`,
-    );
-  }
-  // NOTE: the number badge is deliberately NOT baked — it's a webapp-only editor
-  // aid (rendered by CaptionLayer). It must never appear in the posted image, the
-  // post viewer, or thumbnails, so it's omitted from the composite here.
-  parts.push(textSvg(L));
 
   return `<svg width="${SLIDE_W}" height="${SLIDE_H}" xmlns="http://www.w3.org/2000/svg">
   ${defs()}
