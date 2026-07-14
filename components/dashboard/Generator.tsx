@@ -67,6 +67,49 @@ function toEditorSlides(slides: ResultSlide[]): EditorSlide[] {
   }));
 }
 
+/* ── Post goals (step 2 of the composer) ──────────────────────────────────── */
+// Sent to the caption model as extra context. SVG icons (house rule: no emoji).
+const GOALS: { label: string; icon: React.ReactNode }[] = [
+  {
+    label: "Grow followers",
+    icon: (
+      <>
+        <path d="M23 6l-9.5 9.5-5-5L1 18" />
+        <path d="M17 6h6v6" />
+      </>
+    ),
+  },
+  {
+    label: "Drive sales",
+    icon: (
+      <>
+        <circle cx="9" cy="21" r="1" />
+        <circle cx="20" cy="21" r="1" />
+        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+      </>
+    ),
+  },
+  {
+    label: "Educate",
+    icon: (
+      <>
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </>
+    ),
+  },
+  {
+    label: "Entertain",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="10" />
+        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+        <path d="M9 9h.01M15 9h.01" />
+      </>
+    ),
+  },
+];
+
 /* ── Custom dropdown select ────────────────────────────────────────────────── */
 
 function DropdownSelect({
@@ -101,10 +144,10 @@ function DropdownSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-white/5"
+        className="flex items-center gap-2 whitespace-nowrap rounded-full border border-white/10 px-3.5 py-2 transition-colors hover:border-white/25"
       >
-        <span className="select-none text-[11px] text-white/30">{label}</span>
-        <span className="text-xs font-semibold text-white/85">{selectedLabel}</span>
+        <span className="select-none text-[13px] text-white/40">{label}</span>
+        <span className="text-[13px] font-semibold text-white">{selectedLabel}</span>
         <svg
           className={`text-white/30 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
           width="10" height="10" viewBox="0 0 24 24"
@@ -198,7 +241,11 @@ export function Generator({
   const [model, setModel] = useState(IMAGE_MODELS[0].id);
   const [collection, setCollection] = useState(COLLECTIONS[0].id);
   const [style, setStyle] = useState(STYLES[0].id);
-  const [singleImage, setSingleImage] = useState<string | null>(null);
+  // Composer redesign: post goal + optional user photos (used for the first
+  // slides; the library fills the rest).
+  const [goal, setGoal] = useState("Grow followers");
+  const [userImages, setUserImages] = useState<string[]>([]);
+  const userFileRef = useRef<HTMLInputElement>(null);
 
   const [genStatus, setGenStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [result, setResult] = useState<ResultSlideshow[] | null>(null);
@@ -327,6 +374,7 @@ export function Generator({
       if (state.collection) setCollection(state.collection);
       if (state.style) setStyle(state.style);
       if (state.model) setModel(state.model);
+      if (state.goal) setGoal(state.goal);
       localStorage.removeItem(DRAFT_KEY);
       localStorage.removeItem(AUTO_KEY);
       setRestoredFromDraft(true);
@@ -379,7 +427,7 @@ export function Generator({
       try {
         localStorage.setItem(
           DRAFT_KEY,
-          JSON.stringify({ prompt, niche, slides, layout, bg, collection, style, model }),
+          JSON.stringify({ prompt, niche, slides, layout, bg, collection, style, model, goal }),
         );
         localStorage.setItem(AUTO_KEY, "true");
       } catch {}
@@ -402,12 +450,12 @@ export function Generator({
           layout,
           slideCount: Number(slides),
           slideshowCount: 1,
-          prompt,
+          prompt: goal ? `${prompt}\n\nGoal of this post: ${goal}.`.trim() : prompt,
           backgroundMode: bg,
           collection,
           style,
           model,
-          singleImage: singleImage ?? undefined,
+          userImages: userImages.length ? userImages : undefined,
         }),
       });
       const data = (await res.json()) as { slideshows?: ResultSlideshow[]; error?: string };
@@ -433,12 +481,19 @@ export function Generator({
     URL.revokeObjectURL(objectUrl);
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setSingleImage(ev.target?.result as string);
-    reader.readAsDataURL(file);
+  // Step 3 uploads: read picked/dropped files as data URLs (max 10 kept).
+  function addUserFiles(fileList: FileList | null) {
+    if (!fileList) return;
+    Array.from(fileList)
+      .filter((f) => f.type.startsWith("image/"))
+      .forEach((f) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const src = ev.target?.result as string;
+          if (src) setUserImages((prev) => [...prev, src].slice(0, 10));
+        };
+        reader.readAsDataURL(f);
+      });
   }
 
   const isLoading = genStatus === "loading";
@@ -457,7 +512,7 @@ export function Generator({
           </em>
         </h1>
         <p className="mt-2.5 text-base text-white/40">
-          Pick a style. Describe your idea. Go viral.
+          Pick a style. Write your hook. Go viral.
         </p>
       </div>
 
@@ -469,31 +524,28 @@ export function Generator({
         </div>
       )}
 
-      {/* ── Form card ──────────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[#1c1c1e] shadow-2xl shadow-black/60">
-        {/* Options bar — 4 dropdowns evenly spaced */}
-        <div className="flex items-center px-5 pt-4 pb-3">
+      {/* ── Composer card (Composer Redesign.dc.html) ─────────────── */}
+      <div className="overflow-visible rounded-3xl border border-white/8 bg-[#0f0f16]/[0.92] shadow-[0_40px_80px_rgba(0,0,0,0.5)]">
+        {/* Settings row — pill dropdowns */}
+        <div className="flex flex-wrap items-center gap-2 rounded-t-3xl border-b border-white/6 bg-white/[0.02] px-6 py-4">
           <DropdownSelect
             label="Niche"
             value={niche}
             onChange={setNiche}
             options={GENERATOR_NICHES}
           />
-          <span className="mx-3 h-3 w-px shrink-0 bg-white/10" aria-hidden />
           <DropdownSelect
             label="Slides"
             value={slides}
             onChange={setSlides}
             options={SLIDE_COUNTS.map((n) => ({ value: String(n), label: `${n} slides` }))}
           />
-          <span className="mx-3 h-3 w-px shrink-0 bg-white/10" aria-hidden />
           <DropdownSelect
             label="Layout"
             value={layout}
             onChange={setLayout}
             options={LAYOUTS}
           />
-          <span className="mx-3 h-3 w-px shrink-0 bg-white/10" aria-hidden />
           <DropdownSelect
             label="Source"
             value={bg}
@@ -506,131 +558,262 @@ export function Generator({
           />
         </div>
 
-        {/* Textarea */}
-        <div className="relative">
-          <textarea
-            ref={promptRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                if (assistMode) void handleAssist();
-                else void handleGenerate();
+        <div className="flex flex-col gap-5 px-6 py-6">
+        {/* Step 1 — Your hook */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-white">
+              1
+            </span>
+            <span className="text-sm font-bold tracking-wide text-white">
+              {assistMode ? "Your business" : "Your hook"}
+            </span>
+            <span className="text-[13px] text-white/35">
+              {assistMode
+                ? "— tell us what you do and what you want"
+                : "— the first line people see"}
+            </span>
+          </div>
+
+          {/* Boxed hook field */}
+          <div className="relative">
+            <textarea
+              ref={promptRef}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  if (assistMode) void handleAssist();
+                  else void handleGenerate();
+                }
+              }}
+              rows={2}
+              placeholder=""
+              aria-label={
+                assistMode
+                  ? "Describe your business and goal"
+                  : "Describe your slideshow idea"
               }
-            }}
-            rows={3}
-            placeholder=""
-            aria-label={
-              assistMode
-                ? "Describe your business and goal"
-                : "Describe your slideshow idea"
-            }
-            className="w-full resize-none bg-transparent px-5 py-4 text-[15px] text-white/90 focus:outline-none"
-          />
-          {!isFocused && !prompt && (
-            <div
-              className="pointer-events-none absolute left-5 top-4 flex select-none items-start text-[15px] text-white/30"
-              aria-hidden
+              className="w-full resize-none rounded-[14px] border border-white/8 bg-white/4 px-[18px] py-4 text-lg leading-snug text-white transition-colors focus:border-accent focus:outline-none"
+            />
+            {!isFocused && !prompt && (
+              <div
+                className="pointer-events-none absolute left-[18px] top-4 flex select-none items-start text-lg leading-snug text-white/30"
+                aria-hidden
+              >
+                {assistMode ? (
+                  <span>
+                    Tell us about your business and what you want to achieve…
+                  </span>
+                ) : (
+                  <>
+                    <span>{animText}</span>
+                    <span className="animate-cursor ml-px inline-block h-[1.15em] w-px translate-y-px bg-white/35" />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Try suggestions + hook assist */}
+          <div className="flex flex-wrap items-center gap-2">
+            {!assistMode && (
+              <>
+                <span className="shrink-0 text-[13px] text-white/35">Try:</span>
+                {suggestions.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setPrompt(t);
+                      promptRef.current?.focus();
+                    }}
+                    className="shrink-0 rounded-full border border-white/10 px-3.5 py-1.5 text-[13px] text-white/60 transition-colors hover:border-accent hover:text-white"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setAssistMode((v) => {
+                  const next = !v;
+                  if (!next) {
+                    setAssistHooks(null);
+                    setAssistError("");
+                  }
+                  return next;
+                });
+                promptRef.current?.focus();
+              }}
+              aria-pressed={assistMode}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                assistMode
+                  ? "border-accent/60 bg-accent/20 text-accent-text"
+                  : "border-accent/35 bg-accent/10 text-accent-text hover:bg-accent/20"
+              }`}
             >
-              {assistMode ? (
-                <span>
-                  Tell us about your business and what you want to achieve…
-                </span>
-              ) : (
-                <>
-                  <span>{animText}</span>
-                  <span className="animate-cursor ml-px inline-block h-[1.15em] w-px translate-y-px bg-white/35" />
-                </>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M12 2l1.9 5.7a2 2 0 0 0 1.3 1.3L21 11l-5.8 2a2 2 0 0 0-1.3 1.3L12 20l-1.9-5.7A2 2 0 0 0 8.8 13L3 11l5.8-2a2 2 0 0 0 1.3-1.3L12 2z" />
+              </svg>
+              {assistMode ? "Back to normal mode" : "Help me find my hook"}
+            </button>
+          </div>
+
+          {/* Assist results — 3 hook options with why-it-works explanations */}
+          {assistMode && (assistHooks || assistError) && (
+            <div className="space-y-2">
+              {assistError && (
+                <p className="text-xs text-red-400">{assistError}</p>
+              )}
+              {assistHooks?.map((h) => (
+                <button
+                  key={h.hook}
+                  type="button"
+                  onClick={() => pickHook(h)}
+                  className="group block w-full rounded-xl bg-white/[0.03] px-4 py-3 text-left transition-colors hover:bg-white/[0.06]"
+                >
+                  <span className="block text-sm font-semibold text-white">
+                    {h.hook}
+                  </span>
+                  <span className="mt-1 block text-xs leading-relaxed text-white/40">
+                    {h.why}
+                  </span>
+                  <span className="mt-1.5 block text-[10px] font-medium text-accent-text opacity-0 transition-opacity group-hover:opacity-100">
+                    Use this hook →
+                  </span>
+                </button>
+              ))}
+              {assistHooks && (
+                <p className="pt-0.5 text-[10px] text-white/20">
+                  Pick one — we&apos;ll fill everything in. You can still tweak it before generating.
+                </p>
               )}
             </div>
           )}
         </div>
 
-        {/* Try suggestions — right under textarea */}
-        <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
-          {!assistMode && (
-            <>
-              <span className="shrink-0 text-[11px] text-white/25">Try:</span>
-              {suggestions.map((t) => (
+        <div className="h-px bg-white/6" aria-hidden />
+
+        {/* Step 2 — Goal */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-white">
+              2
+            </span>
+            <span className="text-sm font-bold tracking-wide text-white">Goal</span>
+            <span className="text-[13px] text-white/35">
+              — what should this post do for you?
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {GOALS.map((g) => {
+              const selected = goal === g.label;
+              return (
                 <button
-                  key={t}
+                  key={g.label}
                   type="button"
-                  onClick={() => {
-                    setPrompt(t);
-                    promptRef.current?.focus();
-                  }}
-                  className="shrink-0 rounded-full border border-white/9 bg-white/3 px-3 py-1 text-[11px] text-white/40 transition-colors hover:border-white/20 hover:text-white/80"
+                  onClick={() => setGoal(g.label)}
+                  aria-pressed={selected}
+                  className={`flex items-center gap-2 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
+                    selected
+                      ? "border-accent bg-accent/13 text-white"
+                      : "border-white/10 text-[#9a97ab] hover:border-white/30"
+                  }`}
                 >
-                  {t}
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    {g.icon}
+                  </svg>
+                  <span>{g.label}</span>
                 </button>
-              ))}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setAssistMode((v) => {
-                const next = !v;
-                if (!next) {
-                  setAssistHooks(null);
-                  setAssistError("");
-                }
-                return next;
-              });
-              promptRef.current?.focus();
-            }}
-            aria-pressed={assistMode}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors ${
-              assistMode
-                ? "border-accent/50 bg-accent/10 text-accent-text"
-                : "border-white/9 bg-white/3 text-white/40 hover:border-white/20 hover:text-white/80"
-            }`}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12 2l1.9 5.7a2 2 0 0 0 1.3 1.3L21 11l-5.8 2a2 2 0 0 0-1.3 1.3L12 20l-1.9-5.7A2 2 0 0 0 8.8 13L3 11l5.8-2a2 2 0 0 0 1.3-1.3L12 2z" />
-            </svg>
-            {assistMode ? "Back to normal mode" : "Help me find my hook"}
-          </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Assist results — 3 hook options with why-it-works explanations */}
-        {assistMode && (assistHooks || assistError) && (
-          <div className="space-y-2 px-5 pb-4">
-            {assistError && (
-              <p className="text-xs text-red-400">{assistError}</p>
-            )}
-            {assistHooks?.map((h) => (
-              <button
-                key={h.hook}
-                type="button"
-                onClick={() => pickHook(h)}
-                className="group block w-full rounded-xl bg-white/[0.03] px-4 py-3 text-left transition-colors hover:bg-white/[0.06]"
-              >
-                <span className="block text-sm font-semibold text-white">
-                  {h.hook}
-                </span>
-                <span className="mt-1 block text-xs leading-relaxed text-white/40">
-                  {h.why}
-                </span>
-                <span className="mt-1.5 block text-[10px] font-medium text-accent-text opacity-0 transition-opacity group-hover:opacity-100">
-                  Use this hook →
-                </span>
-              </button>
-            ))}
-            {assistHooks && (
-              <p className="pt-0.5 text-[10px] text-white/20">
-                Pick one — we&apos;ll fill everything in. You can still tweak it before generating.
-              </p>
-            )}
-          </div>
-        )}
+        <div className="h-px bg-white/6" aria-hidden />
 
-        {/* Footer: hint + send button */}
-        <div className="flex items-center justify-between px-5 pb-5">
-          <span className="text-[10px] text-white/20">
+        {/* Step 3 — Your photos */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-white">
+              3
+            </span>
+            <span className="text-sm font-bold tracking-wide text-white">Your photos</span>
+            <span className="text-[13px] text-white/35">
+              — optional, we&apos;ll fill the rest from your niche
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            {userImages.map((src, i) => (
+              <div
+                key={i}
+                className="relative h-[88px] w-[88px] overflow-hidden rounded-xl border border-white/12"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setUserImages((prev) => prev.filter((_, j) => j !== i))
+                  }
+                  aria-label="Remove photo"
+                  className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/65 text-white transition-colors hover:bg-black/90"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => userFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                addUserFiles(e.dataTransfer.files);
+              }}
+              className="flex h-[88px] w-[88px] flex-col items-center justify-center gap-1 rounded-xl border-[1.5px] border-dashed border-white/20 bg-white/[0.02] text-white/40 transition-colors hover:border-accent hover:text-white/70"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span className="text-[11px] font-semibold">Upload</span>
+            </button>
+            <input
+              ref={userFileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addUserFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+        </div>
+
+        {/* Footer: hint + generate */}
+        <div className="flex items-center justify-between rounded-b-3xl border-t border-white/6 bg-white/[0.02] px-6 py-4">
+          <span className="text-[13px] text-white/30">
             {"⌘↵"} {assistMode ? "for hook ideas" : "to generate"}
           </span>
           <button
@@ -638,7 +821,7 @@ export function Generator({
             onClick={() => void (assistMode ? handleAssist() : handleGenerate())}
             disabled={isLoading || assistLoading}
             aria-label={assistMode ? "Get hook ideas" : "Generate"}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-lg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-2.5 rounded-full bg-accent px-6 py-3 text-[15px] font-bold text-white shadow-[0_8px_24px_rgba(122,110,255,0.35)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isLoading || assistLoading ? (
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -646,9 +829,12 @@ export function Generator({
                 <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
             ) : (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
+              <>
+                <span>{assistMode ? "Find my hook" : "Generate"}</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </>
             )}
           </button>
         </div>
@@ -845,36 +1031,6 @@ export function Generator({
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* ── Upload zone ──────────────────────────────────────────── */}
-      {bg === "single" && (
-        <div className="mt-3">
-          <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/2 px-6 py-10 text-center transition-colors hover:border-white/20">
-            {singleImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={singleImage}
-                alt="Uploaded"
-                className="mb-3 h-16 w-auto rounded-lg object-cover"
-              />
-            ) : (
-              <div className="mb-3 grid h-9 w-9 place-items-center rounded-full border border-white/10 text-lg text-white/40">
-                {"↑"}
-              </div>
-            )}
-            <p className="text-sm font-medium text-white/70">
-              {singleImage ? "Change image" : "Upload background"}
-            </p>
-            <p className="mt-1 text-xs text-white/30">PNG or JPG</p>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              className="sr-only"
-              onChange={handleFileUpload}
-            />
-          </label>
         </div>
       )}
 

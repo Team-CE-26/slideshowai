@@ -11,7 +11,7 @@ The dashboard is modeled almost entirely on [Lovable.dev](https://lovable.dev)'s
 - **Transparent navbar** — no border, no backdrop-blur, no background. Just floats over the gradient.
 - **Cards have no visible borders.** Use `bg-white/[0.02]` or `bg-[#1c1c1e]` for depth. `border border-white/[0.08]` max — almost invisible.
 - **Custom dropdowns only** — never native OS `<select>`. Build with absolute-positioned panel, `useRef` + `mousedown` for click-outside. Panel: `bg-[#1a1a1c] rounded-xl border border-white/[0.08] shadow-2xl`.
-- **Circular send button** (Lovable-style): `h-9 w-9 rounded-full bg-white text-black` with an up-arrow SVG. No separate "Generate" button.
+- **Composer (2026-07-14, from the "Composer Redesign" Claude Design file):** the generator card is a 3-step flow — ① Your hook (boxed textarea + Try pills + hook assist), ② Goal (4 SVG-icon buttons, appended to the model prompt), ③ Your photos (optional multi-upload, used for the first slides) — with pill-style dropdowns in a top settings row and an accent `Generate ↑` pill in the footer (replaced the old circular white send button; keep `aria-label="Generate"` — e2e depends on it).
 - **No emojis** in the UI. Ever. (Exception: image collection cards use emoji visually in their gradient tiles, not as text labels.)
 - **Typography:** text-white at full opacity for primary, `text-white/50` for secondary, `text-white/30` for placeholder. No colored text except the accent.
 - **Accent color:** `#6366f1` (indigo-500). Used sparingly — only for active states and the logo.

@@ -90,7 +90,10 @@ interface GenerateBody {
   collection?: string;
   style?: string;
   model?: string;
-  singleImage?: string; // optional data URL for "single" mode
+  singleImage?: string; // optional data URL for "single" mode (legacy)
+  /** Optional user photos (data URLs) — used for the first slides, the
+   *  library fills the rest. Composer step 3. */
+  userImages?: string[];
 }
 
 function collectionImagePaths(): string[] {
@@ -185,10 +188,20 @@ export async function POST(request: Request) {
   // (lib/generate/imageSelection.ts: LLM rank → keyword rank → random),
   // falling back to the bundled local gym set until that collection is
   // ingested (scripts/ingest-library.mjs).
+  // User-supplied photos take the first slide positions; the library fills in
+  // the remainder via caption-matched selection.
+  const userBufs: Buffer[] = (body.userImages ?? [])
+    .slice(0, 10)
+    .filter((u) => typeof u === "string" && u.startsWith("data:"))
+    .map((u) => Buffer.from(u.split(",")[1] ?? "", "base64"))
+    .filter((b) => b.length > 0);
+
   let backgrounds: Buffer[] = [];
   let matched: Buffer[][] | null = null;
   try {
-    if (mode === "single" && body.singleImage?.startsWith("data:")) {
+    if (userBufs.length >= slideCount) {
+      backgrounds = userBufs;
+    } else if (mode === "single" && body.singleImage?.startsWith("data:")) {
       backgrounds = [Buffer.from(body.singleImage.split(",")[1] ?? "", "base64")];
     } else {
       const selected = await selectBackgrounds({
@@ -232,6 +245,7 @@ export async function POST(request: Request) {
           "Untitled slideshow";
 
         const bgFor = (i: number) =>
+          userBufs[i] ??
           matched?.[ssIdx]?.[i] ??
           backgrounds[(ssIdx * slideCount + i) % backgrounds.length];
 
