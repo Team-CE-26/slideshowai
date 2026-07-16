@@ -1,18 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 // Caption-aware background selection from the `library_images` table.
 //
 // Strategy ladder (each rung degrades gracefully to the next):
-//   1. "llm"      — one gpt-4o-mini call matches every slide to its best
-//                   candidate using the library's alt/query metadata.
-//   2. "keywords" — deterministic token-overlap scoring (no API call).
-//   3. "random"   — pre-metadata behavior (rows lack alt/query, e.g. the
+//   1. "vision"   — one gpt-4o vision call that actually SEES thumbnails of the
+//                   candidates and matches each slide to a photo (best relevance;
+//                   can reject fake-looking staged stock that text can't detect).
+//   2. "llm"      — one gpt-4o-mini call matches by alt/query TEXT metadata only.
+//   3. "keywords" — deterministic token-overlap scoring (no API call).
+//   4. "random"   — pre-metadata behavior (rows lack alt/query, e.g. the
 //                   20260714100000 migration/backfill hasn't run yet).
 //
 // Within a slideshow no image is ever used twice; across slideshows of the
 // same request reuse is allowed (they're independent posts).
 
-const CANDIDATE_POOL = 120; // rows offered to the ranker
+const CANDIDATE_POOL = 120; // rows offered to the text ranker
+const VISION_POOL = 12; // candidates actually shown to the vision model
+const THUMB_W = 384; // thumbnail width sent to vision (keeps tokens/latency low)
 const FETCH_CONCURRENCY = 8;
 const MIN_SOURCE_W = 1080; // quality floor (matches scripts/ingest-library.mjs)
 const MIN_SOURCE_H = 1440;
@@ -25,8 +30,26 @@ export interface SlideIntent {
 export interface SelectedBackgrounds {
   /** buffers[ssIdx][slideIdx] — parallel to the requested slideshows. */
   buffers: Buffer[][];
-  strategy: "llm" | "keywords" | "random";
+  strategy: "vision" | "llm" | "keywords" | "random";
 }
+
+// Shared JSON schema for both rankers: per-slideshow list of candidate indices.
+const PICKS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["slideshows"],
+  properties: {
+    slideshows: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["picks"],
+        properties: { picks: { type: "array", items: { type: "integer" } } },
+      },
+    },
+  },
+} as const;
 
 interface Candidate {
   url: string;
@@ -89,25 +112,6 @@ async function rankByLlm(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey.includes("REPLACE_ME")) return null;
 
-  const SCHEMA = {
-    type: "object",
-    additionalProperties: false,
-    required: ["slideshows"],
-    properties: {
-      slideshows: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["picks"],
-          properties: {
-            picks: { type: "array", items: { type: "integer" } },
-          },
-        },
-      },
-    },
-  } as const;
-
   const SYSTEM =
     "You match TikTok slideshow captions to background photos. You get a numbered " +
     "list of candidate photos (their descriptions and the search query that found " +
@@ -146,7 +150,7 @@ async function rankByLlm(
       ],
       response_format: {
         type: "json_schema",
-        json_schema: { name: "picks", strict: true, schema: SCHEMA },
+        json_schema: { name: "picks", strict: true, schema: PICKS_SCHEMA },
       },
     });
     const parsed = JSON.parse(
@@ -169,6 +173,140 @@ async function rankByLlm(
     });
   } catch {
     return null; // fall back to keyword ranking
+  }
+}
+
+// Downscale candidate buffers to small JPEG data URLs for the vision call.
+// Returns null per buffer that fails to decode (skipped as a candidate).
+async function makeThumbnails(buffers: Buffer[]): Promise<(string | null)[]> {
+  return Promise.all(
+    buffers.map(async (b) => {
+      try {
+        const out = await sharp(b)
+          .resize({ width: THUMB_W, withoutEnlargement: true })
+          .jpeg({ quality: 62 })
+          .toBuffer();
+        return `data:image/jpeg;base64,${out.toString("base64")}`;
+      } catch {
+        return null;
+      }
+    }),
+  );
+}
+
+// Repair a raw picks array into valid, in-range, no-repeat indices over `size`.
+function repairPicks(raw: number[], count: number, size: number): number[] {
+  const used = new Set<number>();
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    let p = raw[i];
+    if (!Number.isInteger(p) || p < 0 || p >= size || used.has(p)) {
+      p = -1;
+      for (let c = 0; c < size; c++) {
+        if (!used.has(c)) {
+          p = c;
+          break;
+        }
+      }
+      if (p === -1) p = i % size; // more slides than candidates — allow reuse
+    }
+    used.add(p);
+    out.push(p);
+  }
+  return out;
+}
+
+// Top rung: one gpt-4o vision call that SEES thumbnails of the candidate photos
+// and assigns each slide its best image, honoring viral-slideshow anatomy (the
+// hook slide gets the most scroll-stopping photo) and rejecting fake-looking
+// staged stock. Returns indices into `candBuffers`, or null to fall back.
+async function rankByVision(
+  slideshows: SlideIntent[][],
+  candBuffers: Buffer[],
+): Promise<number[][] | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.includes("REPLACE_ME")) return null;
+
+  const thumbs = await makeThumbnails(candBuffers);
+  const usable = thumbs
+    .map((t, i) => ({ t, i }))
+    .filter((x): x is { t: string; i: number } => x.t !== null);
+  const slidesPerShow = Math.max(...slideshows.map((s) => s.length), 1);
+  if (usable.length < slidesPerShow) return null;
+
+  const SYSTEM =
+    "You are an expert TikTok Photo Mode art director. You see a numbered set of " +
+    "candidate background PHOTOS, then one or more slideshows (each slide has a " +
+    "caption and desired visual keywords). Assign every slide the photo that best " +
+    "fits it.\n" +
+    "Rules of a viral slideshow you MUST follow:\n" +
+    "• The slide marked HOOK is slide 1 and decides everything — give it the single " +
+    "most scroll-stopping, visually striking photo in the set.\n" +
+    "• Every other slide's photo must visually match that slide's caption/keywords.\n" +
+    "• Strongly prefer candid, real-scene, atmospheric photos. REJECT anything that " +
+    "looks like fake or staged studio stock — plain white backgrounds, models posed " +
+    "smiling at the camera, obvious isolated product shots — unless the caption " +
+    "explicitly needs it.\n" +
+    "• Never use the same photo twice within one slideshow.\n" +
+    "Return picks: for each slideshow, one candidate NUMBER per slide, in slide order.";
+
+  const content: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string; detail: "low" } }
+  > = [{ type: "text", text: "Candidate photos:" }];
+  usable.forEach((u, n) => {
+    content.push({ type: "text", text: `Photo ${n}:` });
+    content.push({ type: "image_url", image_url: { url: u.t, detail: "low" } });
+  });
+  content.push({
+    type: "text",
+    text:
+      "Slideshows (assign a Photo number to each slide):\n" +
+      JSON.stringify(
+        slideshows.map((slides) => ({
+          slides: slides.map((s, i) => ({
+            position:
+              i === 0
+                ? "HOOK (slide 1)"
+                : i === slides.length - 1
+                  ? "CTA (last slide)"
+                  : `slide ${i + 1}`,
+            caption: s.caption,
+            keywords: s.keywords,
+          })),
+        })),
+      ),
+  });
+
+  try {
+    const { default: OpenAI } = await import("openai");
+    const openai = new OpenAI({ apiKey, timeout: 30_000, maxRetries: 0 });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "picks", strict: true, schema: PICKS_SCHEMA },
+      },
+    });
+    const parsed = JSON.parse(
+      completion.choices[0]?.message?.content ?? "{}",
+    ) as { slideshows?: { picks?: number[] }[] };
+
+    // picks index into `usable`; map back to the original candBuffers index.
+    return slideshows.map((slides, ssIdx) => {
+      const repaired = repairPicks(
+        parsed.slideshows?.[ssIdx]?.picks ?? [],
+        slides.length,
+        usable.length,
+      );
+      return repaired.map((u) => usable[u].i);
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -245,7 +383,26 @@ export async function selectBackgrounds(opts: {
     rows.map((r) => ({ url: r.url, alt: r.alt ?? "", query: r.query ?? "" })),
   ).slice(0, CANDIDATE_POOL);
 
-  // Without descriptive metadata (pre-backfill) ranking is meaningless.
+  // Top rung: vision. Download a small candidate set up front and let gpt-4o
+  // actually SEE them. Works even pre-backfill (needs no alt/query — it reads
+  // pixels). On success the picked buffers are already in hand, so we return
+  // without a second download round.
+  const visionCount = Math.min(pool.length, Math.max(VISION_POOL, slidesPerShow + 4));
+  const visionCands = pool.slice(0, visionCount);
+  const visionDl = await downloadAll(visionCands.map((c) => c.url));
+  const ready = visionCands.filter((c) => visionDl.has(c.url));
+  if (ready.length >= slidesPerShow) {
+    const readyBufs = ready.map((c) => visionDl.get(c.url) as Buffer);
+    const vpicks = await rankByVision(opts.slideshows, readyBufs);
+    if (vpicks) {
+      return {
+        buffers: vpicks.map((idxs) => idxs.map((p) => readyBufs[p])),
+        strategy: "vision",
+      };
+    }
+  }
+
+  // Without descriptive metadata (pre-backfill) text ranking is meaningless.
   const withMeta = pool.filter((c) => c.alt || c.query).length;
   let strategy: SelectedBackgrounds["strategy"];
   let picks: number[][];

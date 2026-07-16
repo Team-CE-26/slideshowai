@@ -23,6 +23,8 @@ export interface ListicleRequest {
   description: string; // the user's "angle / product" box
   slideCount: number;
   slideshowCount: number;
+  /** Pre-rendered block of real trending hooks for this niche (may be ""). */
+  exemplars?: string;
 }
 
 interface Structure {
@@ -68,16 +70,27 @@ const SCHEMA = {
 } as const;
 
 const SYSTEM =
-  'You write TikTok Photo Mode "listicle" slideshows for small businesses. ' +
-  "Voice: punchy, generic, scroll-stopping, conversational. Short lines (most " +
-  "under ~12 words). No hashtags. At most one emoji in the entire slideshow.\n" +
-  "A listicle is: a numbered TITLE hook, several numbered REASON slides (generic, " +
-  "broadly true, NOT about any product), exactly one PLUG reason that natively " +
-  "works in the user's product, and a CTA.\n" +
-  "The PLUG must read like just another reason on the list — a reason the product " +
-  "happens to solve. It must NOT sound like an ad: no \"buy now\", no brand hype, " +
-  "no hard selling. Same tone and length as the other reasons. Only the plug slide " +
-  "may reference the product; every other reason stays product-agnostic.\n" +
+  "You are a world-class TikTok Photo Mode strategist for small businesses. You " +
+  "write slideshows engineered to STOP THE SCROLL and get watched to the last " +
+  "slide. You know the anatomy of a viral slideshow cold:\n" +
+  "• SLIDE 1 IS THE HOOK and it decides everything. It must be a pattern-" +
+  "interrupt: a bold or contrarian claim, a sharp curiosity gap, a callout " +
+  "(\"you're doing X wrong\"), or a specific promise. Concrete and a little " +
+  "provocative — never a soft, generic intro. If slide 1 is boring, nothing else " +
+  "matters.\n" +
+  "• EVERY MIDDLE SLIDE must earn the next swipe: one punchy, concrete point that " +
+  "makes the viewer need to see what's next. Build tension toward a payoff.\n" +
+  "• THE LAST SLIDE is a soft call to action.\n" +
+  "VOICE: punchy, conversational, specific — talk like a real creator, not a " +
+  "brand. Short lines (most under ~12 words). No hashtags. At most one emoji in " +
+  "the entire slideshow. Ban generic filler (\"stay consistent\", \"believe in " +
+  "yourself\", \"quality matters\"); be concrete, specific, and scroll-stopping.\n" +
+  "STRUCTURE (listicle): a numbered TITLE hook, several numbered REASON slides " +
+  "(broadly true, NOT about any product), exactly one PLUG reason that natively " +
+  "fits the user's product, and a CTA. The PLUG must read like just another reason " +
+  "on the list — no \"buy now\", no brand hype, no hard selling, same tone and " +
+  "length as the other reasons. Only the plug slide may reference the product; " +
+  "every other reason stays product-agnostic.\n" +
   "For EVERY slide also return image_keywords: 3-5 concrete VISUAL words describing " +
   "the ideal candid background photo for that slide's message (subjects, objects, " +
   "settings, mood — e.g. [\"empty gym\", \"barbell\", \"dark moody\"]). Describe a " +
@@ -91,11 +104,16 @@ function buildUser(
   const plugSlideNumber = s.plugIndex + 1; // 1-based slide position
   const plugReasonNumber = s.plugIndex; // its number among reasons
   return (
+    (req.exemplars ? `${req.exemplars}\n\n` : "") +
     `Niche: ${req.niche}\n` +
     `Product / angle to plug (use ONLY on the plug slide): ${
       req.description ||
       "(none given — make the plug a strong generic reason that implies a simple fix or tool exists, without naming a product)"
     }\n\n` +
+    (req.exemplars
+      ? "Write a hook that matches or beats the trending examples above in " +
+        "specificity and scroll-stopping power (borrow the STYLE, not the words).\n\n"
+      : "") +
     `Build EXACTLY ${s.count} slides, in order:\n` +
     `1. role "title", number ${s.reasonCount}: a numbered listicle hook for this niche. ` +
     `The headline number MUST be ${s.reasonCount} (e.g. "${s.reasonCount} reasons you're ...", "${s.reasonCount} mistakes ..."). Make it a relatable problem or curiosity hook.\n` +
@@ -171,7 +189,7 @@ async function callOpenAI(
   let completion;
   try {
     completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -185,7 +203,7 @@ async function callOpenAI(
     if (err instanceof OpenAI.APIError) {
       if (err.status === 429 || err.code === "insufficient_quota") {
         throw new Error(
-          "OpenAI quota exceeded (429). Add credits/billing to your OpenAI account at platform.openai.com → Billing. gpt-4o-mini costs a fraction of a cent per slideshow.",
+          "OpenAI quota exceeded (429). Add credits/billing to your OpenAI account at platform.openai.com → Billing. Each slideshow costs roughly a cent or two.",
         );
       }
       if (err.status === 401) {

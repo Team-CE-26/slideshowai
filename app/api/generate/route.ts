@@ -13,6 +13,8 @@ import {
   type Billing,
 } from "@/lib/billing/usage";
 import { generateListicle, type ListicleSlide } from "@/lib/generate/listicle";
+import { generateImageFirst } from "@/lib/generate/imageFirst";
+import { fetchTrendExemplars, exemplarsBlock } from "@/lib/generate/trendExemplars";
 import sharp from "sharp";
 import { compositeSlide, prepareBackground } from "@/lib/generate/composite";
 import { selectBackgrounds } from "@/lib/generate/imageSelection";
@@ -165,15 +167,43 @@ export async function POST(request: Request) {
     await markGenerated(admin, user.id, new Date(now).toISOString());
   }
 
-  // 1) Listicle copy (OpenAI, structured output, validated)
+  // Freshest real trending hooks for this niche, fed into every generation path
+  // so copy mirrors what's actually going viral now (one fast indexed read).
+  const exemplars = exemplarsBlock(
+    await fetchTrendExemplars(supabase, body.niche || "", 8),
+  );
+
+  // User-uploaded photos (Composer step 3). When present they ARE the content:
+  // we generate image-first — the model SEES them, writes grounded captions,
+  // orders for the hook, and excludes ones that don't fit the story.
+  const userBufs: Buffer[] = (body.userImages ?? [])
+    .slice(0, 10)
+    .filter((u) => typeof u === "string" && u.startsWith("data:"))
+    .map((u) => Buffer.from(u.split(",")[1] ?? "", "base64"))
+    .filter((b) => b.length > 0);
+
+  // 1) Copy. photoAssign[ss][i] = uploaded-photo index for that slide, or -1
+  //    (fill from stock); null when there are no uploads or vision fell back.
   let content: ListicleSlide[][];
+  let photoAssign: number[][] | null = null;
+  let excludedPhotos = 0;
   try {
-    content = await generateListicle({
+    const req = {
       niche: body.niche || "small business",
       description: body.prompt || "",
       slideCount,
       slideshowCount,
-    });
+      exemplars,
+    };
+    const imgFirst =
+      userBufs.length > 0 ? await generateImageFirst(req, userBufs) : null;
+    if (imgFirst) {
+      content = imgFirst.slideshows;
+      photoAssign = imgFirst.slideshows.map((sl) => sl.map((s) => s.photoIndex));
+      excludedPhotos = imgFirst.excluded.length;
+    } else {
+      content = await generateListicle(req);
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : "Generation failed.";
     const status = message.includes("OPENAI_API_KEY")
@@ -184,24 +214,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
-  // 2) Backgrounds — caption-matched selection from the Storage-backed library
-  // (lib/generate/imageSelection.ts: LLM rank → keyword rank → random),
-  // falling back to the bundled local gym set until that collection is
-  // ingested (scripts/ingest-library.mjs).
-  // User-supplied photos take the first slide positions; the library fills in
-  // the remainder via caption-matched selection.
-  const userBufs: Buffer[] = (body.userImages ?? [])
-    .slice(0, 10)
-    .filter((u) => typeof u === "string" && u.startsWith("data:"))
-    .map((u) => Buffer.from(u.split(",")[1] ?? "", "base64"))
-    .filter((b) => b.length > 0);
-
+  // 2) Backgrounds. Image-first uploads drive their own slides via photoAssign;
+  //    any -1 slot (or a positional-fallback gap) is filled from the caption-
+  //    matched stock library. No uploads → the full library selection path
+  //    (lib/generate/imageSelection.ts: vision → LLM text → keyword → random).
+  const needsStock =
+    userBufs.length === 0
+      ? true
+      : photoAssign
+        ? photoAssign.some((row) => row.some((p) => p < 0))
+        : userBufs.length < slideCount; // vision fell back → positional + fill
   let backgrounds: Buffer[] = [];
   let matched: Buffer[][] | null = null;
   try {
-    if (userBufs.length >= slideCount) {
-      backgrounds = userBufs;
-    } else if (mode === "single" && body.singleImage?.startsWith("data:")) {
+    if (userBufs.length > 0 && !needsStock) {
+      // Every slide is covered by an uploaded photo — nothing to fetch.
+    } else if (
+      userBufs.length === 0 &&
+      mode === "single" &&
+      body.singleImage?.startsWith("data:")
+    ) {
       backgrounds = [Buffer.from(body.singleImage.split(",")[1] ?? "", "base64")];
     } else {
       const selected = await selectBackgrounds({
@@ -228,7 +260,7 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-  if (!matched && backgrounds.length === 0) {
+  if (userBufs.length === 0 && !matched && backgrounds.length === 0) {
     return NextResponse.json(
       { error: "No background images available." },
       { status: 500 },
@@ -244,10 +276,18 @@ export async function POST(request: Request) {
           body.niche ||
           "Untitled slideshow";
 
-        const bgFor = (i: number) =>
-          userBufs[i] ??
-          matched?.[ssIdx]?.[i] ??
-          backgrounds[(ssIdx * slideCount + i) % backgrounds.length];
+        const bgFor = (i: number) => {
+          if (photoAssign) {
+            const p = photoAssign[ssIdx]?.[i] ?? -1;
+            if (p >= 0) return userBufs[p]; // image-first: model's photo choice
+          } else if (userBufs[i]) {
+            return userBufs[i]; // no vision assignment → positional (fallback/legacy)
+          }
+          return (
+            matched?.[ssIdx]?.[i] ??
+            backgrounds[(ssIdx * slideCount + i) % backgrounds.length]
+          );
+        };
 
         // --- Not signed in: ephemeral baked preview (data URLs, not saved). No
         // stored background, so the drag editor stays disabled (bgUrl = ""). ---
@@ -374,7 +414,7 @@ export async function POST(request: Request) {
       await consume(admin, user.id, billing, slideshows.length);
     }
 
-    return NextResponse.json({ slideshows });
+    return NextResponse.json({ slideshows, excludedPhotos });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to build slideshow.";
     return NextResponse.json({ error: message }, { status: 500 });
