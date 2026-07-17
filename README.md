@@ -1,82 +1,128 @@
 # SlideShowAI
 
-Auto-generates ready-to-post **TikTok Photo Mode slideshows** for businesses to
-promote their products. A user picks their niche, the app pulls images from a
-library, the Claude API writes captions, the captions are composited onto images
-as styled vertical (9:16) slides, and the user downloads them to post.
+Generates ready-to-post **TikTok Photo Mode slideshows** for small businesses. You
+pick a niche and type a topic (or upload your own photos); the app writes
+scroll-stopping captions modeled on what's trending, finds or generates a
+matching image for every slide, composites them into vertical 9:16 slides, and
+either lets you download them or **posts them straight to TikTok** — immediately
+or on a schedule.
+
+Live at **https://slideshowai-three.vercel.app**.
 
 ## Stack
 
-- **Next.js** (App Router) + **TypeScript** + **Tailwind CSS v4**
-- **Supabase** — auth, Postgres, storage _(later milestone)_
-- **Anthropic API** — caption generation _(later milestone)_
-- **Sharp** — image compositing _(later milestone)_
-- Deploy target: **Vercel**
+- **Next.js 16** (App Router, Turbopack) + **TypeScript** + **Tailwind CSS v4**
+- **Supabase** — auth (email + Google), Postgres, Storage
+- **OpenAI** — `gpt-4o` (captions + vision image matching), `gpt-image-1` (AI backgrounds)
+- **Pexels** — licensed stock photos (library ingest + live runtime search)
+- **Sharp** + **@resvg/resvg-js** — on-demand slide compositing (TikTok Sans)
+- **Stripe** — subscriptions + one-time credits
+- **Apify** — live TikTok trend scraping (Grow suite)
+- Deployed on **Vercel**
+
+## How generation works
+
+Two intake paths share one "vision brain" — see `lib/generate/` and
+`app/api/generate/route.ts`:
+
+1. **Copy** (`listicle.ts`, `gpt-4o`): your prompt is the *topic* that drives the
+   whole slideshow. The model is fed the freshest real trending hooks for the
+   niche (`trendExemplars.ts` reads the `trending_posts` table at runtime) and a
+   viral-anatomy system prompt (slide 1 = pattern-interrupt hook; no exclamation
+   marks / brand voice). Structured JSON: title → reasons → optional native plug → CTA.
+2. **Images** — one of three, depending on source:
+   - **Your uploads** (`imageFirst.ts`) — the primary flow. A `gpt-4o` vision call
+     *sees* your photos, writes captions grounded in them, orders the strongest on
+     the hook slide, and **excludes** ones that don't fit.
+   - **Stock, two-tier** (`liveImages.ts` + `aiImage.ts`) — search Pexels at
+     runtime with each slide's keywords, a strict vision judge picks the photo that
+     genuinely depicts the caption (or returns "none fit"), and for the misses
+     `gpt-image-1` **generates** a bespoke on-topic background (paid plans only).
+   - **Frozen library** (`imageSelection.ts`) — the fallback when `PEXELS_API_KEY`
+     is absent: a vision → keyword → random ladder over the `library_images` table.
+3. **Compositing** (`renderSlide.ts`) — captions are **never baked into storage**;
+   only the text-free background (`{i}-bg.jpg`) is stored. Text is composited
+   on-demand at display/download/post via `/api/slideshows/[id]/render/[pos]`, so
+   everything stays editable (drag-to-reposition is a pure DB write).
+
+## Features
+
+- **Post to TikTok** — full Content Posting API flow (`DIRECT_POST`, pull-from-URL).
+  Posts are private (`SELF_ONLY`) until TikTok audits the app. See **My Posts**.
+- **Scheduling** — queue posts (`scheduled_posts`); an external cron hits
+  `/api/cron/publish-scheduled` every ~10 min to publish due posts. Requires a
+  connected TikTok account.
+- **Billing** — Stripe multi-tier subscriptions (Growth / Scale / Unlimited) +
+  one-time credit packs, with hard monthly-quota and rate-limit enforcement.
+- **Grow suite** — Trends (live via Apify), Inspiration, Collections, Schedule,
+  and Analytics dashboard sections.
 
 ## Getting started
 
 ```bash
 npm install
-cp .env.local.example .env.local   # then fill in the Supabase values (see below)
+cp .env.local.example .env.local   # fill in the values (see below)
 npm run dev          # http://localhost:3000
 npm run build        # production build
 npm run lint
+npm run e2e          # headless Playwright smoke test
 ```
+
+Migrations in `supabase/migrations/` are **run manually** in the Supabase SQL
+Editor (not applied by deploy). Run them in filename order on a fresh project.
 
 ### Environment variables
 
-`.env.local` (gitignored) holds the Supabase connection, copied from the
-project's Connect dialog → Framework (Next.js):
+Server-only keys must **never** be prefixed `NEXT_PUBLIC_`. See `.env.local.example`.
 
-```
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-```
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase (browser) |
+| `SUPABASE_SECRET_KEY` | Supabase admin (`sb_secret_…`) — service-role writes, image proxy |
+| `OPENAI_API_KEY` | Captions, vision matching, AI image generation |
+| `PEXELS_API_KEY` | Stock library ingest **and** live runtime image search |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | TikTok Content Posting API |
+| `NEXT_PUBLIC_APP_URL` | Prod domain — OAuth redirects + image proxy URLs |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICES` | Billing (`STRIPE_PRICES` = one JSON blob mapping plan/credit ids → Stripe price ids) |
+| `APIFY_TOKEN` | Live TikTok trends (falls back to mock data if absent) |
+| `CRON_SECRET` | Shared secret guarding the `/api/cron/*` endpoints |
 
 ## Project structure
 
 ```
-app/                       Next.js App Router (layout, page, globals.css)
-components/
-  landing/                 Landing-page sections (Hero, NicheDemo, etc.)
-  ui/                      Shared primitives (Button)
-lib/
-  demo-data.ts             Hardcoded niche → sample slides for the demo
-utils/supabase/
-  client.ts                Browser Supabase client (Client Components)
-  server.ts                Server Supabase client (RSC / Route Handlers / Actions)
-  session.ts               updateSession() — refreshes auth cookies + route guards
-proxy.ts                   Next.js 16 proxy (formerly middleware) — runs updateSession
-app/login, app/signup      Auth pages + server actions (login/signup/signout)
-app/auth/confirm           Email-confirmation route handler
-app/dashboard              Generator UI — app shell (sidebar) + step-based create flow
-components/dashboard/      Sidebar + Generator (UI/UX only, not wired to a backend)
-lib/generator-options.ts   Static options for the generator
-lib/generate/listicle.ts   OpenAI (gpt-4o-mini) listicle copy (structured output)
-lib/generate/composite.ts  Sharp: caption → 9:16 PNG over a gradient scrim
-app/api/generate           Route handler: captions + compositing → slides
-supabase/migrations/       SQL migrations (run these in the Supabase SQL Editor)
-public/demo/               Placeholder 9:16 slide images (generated)
-scripts/
-  gen-placeholders.mjs     Regenerates the placeholder images
+app/
+  api/generate/            The generation pipeline (copy → images → composite)
+  api/slideshows/[id]/     render/[pos], reposition, zip download
+  api/tiktok/, api/auth/tiktok/   TikTok OAuth + posting + image proxy
+  api/schedule/, api/cron/ Scheduled posting queue + publisher
+  api/stripe/              Checkout, webhook, customer portal
+  dashboard/               Generator + Grow suite (trends/inspiration/schedule/…)
+lib/generate/
+  listicle.ts              gpt-4o caption copy (topic-driven, trend-fed)
+  trendExemplars.ts        Feeds real trending hooks into the copy prompt
+  imageFirst.ts            Image-first vision pipeline for user uploads
+  liveImages.ts            Live Pexels search + strict vision judge (stock tier 1)
+  aiImage.ts               gpt-image-1 background generation (stock tier 2)
+  imageSelection.ts        Frozen-library matcher (fallback)
+  renderSlide.ts, layout.ts, composite.ts, fonts.ts   On-demand compositing
+lib/trends.ts              Apify trend ingest + gpt-4o-mini curation
+lib/billing/               Plans, usage/quota, Stripe helpers
+utils/supabase/            client / server / admin Supabase clients
+supabase/migrations/       SQL migrations (run manually in the SQL Editor)
+scripts/ingest-library.mjs Pexels library ingest / metadata backfill
+e2e/                       Playwright specs (pre-push gate)
 ```
 
-Run `node scripts/gen-placeholders.mjs` to regenerate the demo placeholder images.
+## Testing
 
-## Milestones
-
-- [x] **M1 — Scaffold + landing page** (current): static landing page with a
-      working client-side niche-switcher demo. No backend.
-- [ ] M2 — Auth + Supabase data layer
-- [ ] M3 — Niche → image library
-- [ ] M4 — Caption generation (Anthropic API)
-- [ ] M5 — Compositing pipeline (Sharp, 9:16 slides)
-- [ ] M6 — Download / export
-- [ ] M7 — Push to TikTok drafts (Content Posting API)
+`npm run e2e` runs a headless Playwright smoke test; `githooks/pre-push` runs it
+on every `git push` and **blocks the push on failure** (bypass:
+`git push --no-verify`). It mocks `/api/generate` and TikTok — **zero OpenAI
+spend, no real posts**. Fresh clones need `npx playwright install chromium` once.
 
 ## Design
 
-Dark theme, generous whitespace, single accent color (indigo — `#4f46e5` fills /
-`#818cf8` text on dark), Inter font, rounded corners, mobile-responsive. Colors
-are centralized as design tokens in `app/globals.css`.
-# slideshowai
+Modeled on [Lovable.dev](https://lovable.dev): pure-black (`#000`) background,
+full-page hero gradient, transparent navbar, custom (never native) dropdowns,
+indigo accent (`#6366f1`), no emojis in the UI. See `CLAUDE.md` for the full
+design system and engineering notes.
