@@ -17,6 +17,32 @@ export interface BillingUsage {
   credits: number;
 }
 
+// What every paid tier includes (all true today — differentiation is volume).
+const SHARED_PERKS = [
+  "Post & schedule straight to TikTok",
+  "AI captions + vision-matched photos",
+  "AI-generated backgrounds",
+];
+
+function Check() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="mt-0.5 shrink-0 text-accent-text"
+      aria-hidden
+    >
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
+}
+
 export function BillingModal({
   open,
   onClose,
@@ -76,150 +102,234 @@ export function BillingModal({
         aria-hidden
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/80 backdrop-blur-sm"
+        className="absolute inset-0 cursor-default bg-black/80 backdrop-blur-md"
       />
-      <div className="relative z-10 max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0a0a0b] shadow-2xl">
-        {/* header */}
-        <div className="flex items-start justify-between gap-4 px-6 py-5">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Billing &amp; Plans</h2>
-            <p className="mt-0.5 text-xs text-white/50">
-              {usage.quota === null
-                ? "Unlimited slideshows"
-                : `${usage.used} / ${usage.quota} slideshows this month`}
-              {usage.credits > 0 ? ` · ${usage.credits} credits` : ""}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isSubscriber && (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={() => post("/api/stripe/portal", {}, "portal")}
-                className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:border-white/40 disabled:opacity-50"
-              >
-                {busy === "portal" ? "Opening…" : "Manage billing"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="grid h-8 w-8 place-items-center rounded-full text-white/50 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </div>
+      <div className="relative z-10 max-h-[92vh] w-full max-w-4xl overflow-y-auto overflow-x-hidden rounded-3xl border border-white/[0.08] bg-[#08080b] shadow-2xl shadow-black/80">
+        {/* aurora — floating gradient orbs behind everything */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="animate-float-a absolute -top-24 left-[12%] h-72 w-72 rounded-full bg-accent/25 blur-[100px]" />
+          <div className="animate-float-b absolute -top-16 right-[8%] h-64 w-64 rounded-full bg-fuchsia-500/15 blur-[100px]" />
+          <div
+            className="animate-float-a absolute bottom-[-4rem] left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-violet-500/15 blur-[110px]"
+            style={{ animationDelay: "-6s" }}
+          />
         </div>
 
-        {err && (
-          <div className="mx-6 mb-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-            {err}
-          </div>
-        )}
-
-        {/* tiers */}
-        <div className="grid gap-4 px-6 pb-2 sm:grid-cols-3">
-          {PAID_PLAN_IDS.map((id) => {
-            const p = PLANS[id];
-            const current = usage.plan === id;
-            return (
-              <div
-                key={id}
-                className={`relative flex flex-col rounded-xl border p-5 ${
-                  p.popular
-                    ? "border-accent/60 bg-accent/[0.06]"
-                    : "border-white/[0.08] bg-white/[0.02]"
-                }`}
-              >
-                {p.popular && (
-                  <span className="absolute -top-2.5 left-5 rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                    Most popular
-                  </span>
-                )}
-                <p className="text-sm font-semibold text-white">{p.name}</p>
-                <p className="mt-0.5 text-xs text-white/40">{p.tagline}</p>
-                <p className="mt-3">
-                  <span className="text-2xl font-bold text-white">${p.price}</span>
-                  <span className="text-xs text-white/40">/mo</span>
-                </p>
-                <p className="mt-2 text-xs text-white/70">
-                  {p.quota === null
-                    ? "Unlimited slideshows"
-                    : `${p.quota} slideshows / month`}
-                </p>
-                {p.quota === null && (
-                  <p className="mt-0.5 text-[10px] text-white/30">
-                    Fair use applies
-                  </p>
-                )}
-                <button
-                  type="button"
-                  disabled={current || busy !== null}
-                  onClick={() => post("/api/stripe/checkout", { kind: "subscription", id }, `sub:${id}`)}
-                  className={`mt-4 w-full rounded-full px-4 py-2 text-xs font-semibold transition-opacity disabled:opacity-50 ${
-                    p.popular
-                      ? "bg-accent text-white hover:opacity-90"
-                      : "border border-white/15 text-white hover:border-white/40"
-                  } ${current ? "cursor-default" : ""}`}
+        <div className="relative">
+          {/* header */}
+          <div className="flex items-start justify-between gap-4 px-7 pb-2 pt-7">
+            <div className="animate-rise">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent-text">
+                Plans &amp; billing
+              </p>
+              <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Make it{" "}
+                <em
+                  className="text-gradient-animated not-italic"
+                  style={{ fontStyle: "normal" }}
                 >
-                  {current
-                    ? "Current plan"
-                    : busy === `sub:${id}`
-                      ? "Redirecting…"
-                      : "Upgrade"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* credits */}
-        <div className="mt-2 border-t border-white/[0.06] px-6 py-5">
-          <p className="text-sm font-semibold text-white">Add credits</p>
-          <p className="mt-0.5 text-xs text-white/40">
-            One-time top-up · 1 credit = 1 slideshow · never expires
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {CREDIT_PACK_IDS.map((id) => {
-              const pack = CREDIT_PACKS[id];
-              return (
+                  unstoppable
+                </em>
+              </h2>
+              <p className="mt-1 text-xs text-white/50">
+                {usage.quota === null
+                  ? "Unlimited slideshows"
+                  : `${usage.used} / ${usage.quota} slideshows this month`}
+                {usage.credits > 0 ? ` · ${usage.credits} credits banked` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {isSubscriber && (
                 <button
-                  key={id}
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => post("/api/stripe/checkout", { kind: "credits", id }, `cr:${id}`)}
-                  className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-left transition-colors hover:border-white/25 disabled:opacity-50"
+                  onClick={() => post("/api/stripe/portal", {}, "portal")}
+                  className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:border-white/40 disabled:opacity-50"
                 >
-                  <span className="text-sm font-semibold text-white">
-                    {pack.credits} credits
-                  </span>
-                  <span className="text-xs font-semibold text-white/60">
-                    {busy === `cr:${id}` ? "…" : `$${pack.price}`}
-                  </span>
+                  {busy === "portal" ? "Opening…" : "Manage billing"}
                 </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="grid h-8 w-8 place-items-center rounded-full text-white/50 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {err && (
+            <div className="mx-7 mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {err}
+            </div>
+          )}
+
+          {/* tiers */}
+          <div className="grid gap-4 px-7 pb-2 pt-5 sm:grid-cols-3">
+            {PAID_PLAN_IDS.map((id, idx) => {
+              const p = PLANS[id];
+              const current = usage.plan === id;
+              const quotaLine =
+                p.quota === null
+                  ? "Unlimited slideshows"
+                  : `${p.quota} slideshows / month`;
+
+              const card = (
+                <div
+                  className={`relative flex h-full flex-col rounded-[15px] p-5 ${
+                    p.popular ? "bg-[#0c0c12]" : "bg-white/[0.02]"
+                  }`}
+                >
+                  {p.popular && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-accent px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg shadow-accent/50">
+                      Most popular
+                    </span>
+                  )}
+                  <p className="text-sm font-bold text-white">{p.name}</p>
+                  <p className="mt-0.5 text-xs text-white/40">{p.tagline}</p>
+                  <p className="mt-4 flex items-baseline gap-1">
+                    <span
+                      className={`text-4xl font-extrabold tracking-tight ${
+                        p.popular ? "text-gradient-animated" : "text-white"
+                      }`}
+                    >
+                      ${p.price}
+                    </span>
+                    <span className="text-xs font-medium text-white/40">/mo</span>
+                  </p>
+
+                  <ul className="mt-4 flex flex-col gap-2 text-xs leading-snug text-white/70">
+                    <li className="flex items-start gap-2">
+                      <Check />
+                      <span className="font-semibold text-white">
+                        {quotaLine}
+                        {p.quota === null && (
+                          <span className="font-normal text-white/35"> · fair use</span>
+                        )}
+                      </span>
+                    </li>
+                    {SHARED_PERKS.map((perk) => (
+                      <li key={perk} className="flex items-start gap-2">
+                        <Check />
+                        {perk}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    disabled={current || busy !== null}
+                    onClick={() =>
+                      post("/api/stripe/checkout", { kind: "subscription", id }, `sub:${id}`)
+                    }
+                    className={`mt-5 w-full rounded-full px-4 py-2.5 text-xs font-bold transition-all disabled:opacity-50 ${
+                      p.popular
+                        ? "btn-shine bg-accent text-white shadow-lg shadow-accent/40 hover:shadow-xl hover:shadow-accent/50"
+                        : "border border-white/15 text-white hover:border-accent hover:text-accent-text"
+                    } ${current ? "cursor-default" : ""}`}
+                  >
+                    {current
+                      ? "Current plan"
+                      : busy === `sub:${id}`
+                        ? "Redirecting…"
+                        : `Get ${p.name}`}
+                  </button>
+                </div>
+              );
+
+              return (
+                <div
+                  key={id}
+                  className="animate-rise transition-transform duration-300 hover:-translate-y-1.5"
+                  style={{ animationDelay: `${80 + idx * 90}ms` }}
+                >
+                  {p.popular ? (
+                    // Rotating conic-gradient border, Higgsfield-style. Only
+                    // the spinning layer is clipped so the badge can overhang.
+                    <div className="relative h-full rounded-2xl p-px shadow-[0_0_50px_rgba(99,102,241,0.25)]">
+                      <div aria-hidden className="absolute inset-0 overflow-hidden rounded-2xl">
+                        <div
+                          className="animate-spin absolute -inset-[150%]"
+                          style={{
+                            animationDuration: "5s",
+                            background:
+                              "conic-gradient(from 0deg, transparent 0deg, #6366f1 70deg, #d946ef 140deg, transparent 220deg, #6366f1 300deg, transparent 360deg)",
+                          }}
+                        />
+                      </div>
+                      <div className="relative h-full">{card}</div>
+                    </div>
+                  ) : (
+                    <div className="h-full rounded-2xl border border-white/[0.08] transition-colors hover:border-white/20">
+                      {card}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-        </div>
 
-        {/* usage bar (subscribers with a finite quota) */}
-        {usage.quota !== null && (
-          <div className="border-t border-white/[0.06] px-6 py-4">
-            <div className="flex items-center justify-between text-[11px] text-white/40">
-              <span>This month</span>
-              <span>
-                {usage.used} / {usage.quota}
-                {usage.credits > 0 ? ` · +${usage.credits} credits` : ""}
-              </span>
-            </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          {/* credits */}
+          <div
+            className="animate-rise mt-4 border-t border-white/[0.06] px-7 py-5"
+            style={{ animationDelay: "340ms" }}
+          >
+            <p className="text-sm font-bold text-white">Add credits</p>
+            <p className="mt-0.5 text-xs text-white/40">
+              One-time top-up · 1 credit = 1 slideshow · never expires
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {CREDIT_PACK_IDS.map((id) => {
+                const pack = CREDIT_PACKS[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      post("/api/stripe/checkout", { kind: "credits", id }, `cr:${id}`)
+                    }
+                    className="group flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:bg-accent/[0.06] hover:shadow-lg hover:shadow-accent/10 disabled:opacity-50"
+                  >
+                    <span className="text-sm font-bold text-white">
+                      {pack.credits}
+                      <span className="ml-1 text-xs font-medium text-white/40">
+                        credits
+                      </span>
+                    </span>
+                    <span className="text-sm font-bold text-white/60 transition-colors group-hover:text-accent-text">
+                      {busy === `cr:${id}` ? "…" : `$${pack.price}`}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        )}
+
+          {/* usage bar (subscribers with a finite quota) */}
+          {usage.quota !== null && (
+            <div className="border-t border-white/[0.06] px-7 py-4">
+              <div className="flex items-center justify-between text-[11px] text-white/40">
+                <span>This month</span>
+                <span>
+                  {usage.used} / {usage.quota}
+                  {usage.credits > 0 ? ` · +${usage.credits} credits` : ""}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-accent via-violet-500 to-fuchsia-500 transition-[width] duration-700"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>,
     document.body,
