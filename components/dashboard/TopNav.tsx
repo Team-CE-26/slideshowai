@@ -15,7 +15,6 @@ const DRAWER_LINKS = [
   ]},
   { section: "Grow", items: [
     { label: "Trends", href: "/dashboard/trends" },
-    { label: "Inspiration", href: "/dashboard/inspiration" },
     { label: "Collections", href: "/dashboard/collections" },
     { label: "Schedule", href: "/dashboard/schedule" },
     { label: "Analytics", href: "/dashboard/analytics" },

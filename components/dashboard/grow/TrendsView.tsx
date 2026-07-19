@@ -18,7 +18,7 @@ import { FilterPill } from "@/components/ui/FilterPill";
 const GRID =
   "grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
-type TimeWindow = "day" | "week" | "rising";
+type TimeWindow = "day" | "week" | "rising" | "alltime";
 
 const WINDOW_HOURS: Record<TimeWindow, number> = {
   day: 24,
@@ -26,12 +26,15 @@ const WINDOW_HOURS: Record<TimeWindow, number> = {
   // Rising only considers recent posts — an old monster with a fresh snapshot
   // is "still huge", not "rising".
   rising: 24 * 14,
+  // All-time reads its own 12-month feed; no hour cap on top of that.
+  alltime: Infinity,
 };
 
 const WINDOW_TABS: { value: TimeWindow; label: string }[] = [
   { value: "day", label: "Best today" },
   { value: "week", label: "Best this week" },
   { value: "rising", label: "Rising" },
+  { value: "alltime", label: "All-time" },
 ];
 
 // What each tab actually ranks by (shown next to the live dot).
@@ -39,14 +42,18 @@ const WINDOW_RANK_LABEL: Record<TimeWindow, string> = {
   day: "The day's biggest slideshows, ranked by views",
   week: "The week's biggest slideshows, ranked by views",
   rising: "Climbing fastest right now — views gained since the last refresh",
+  alltime: "The most viral slideshows of the past year — steal the structure",
 };
 
 export function TrendsView({
   initialFeed,
+  inspirationFeed,
   defaultNiche,
 }: {
   /** Server-fetched feed (live or sample). Absent = client loads the sample. */
   initialFeed?: TrendingFeed | null;
+  /** 12-month hall-of-fame feed backing the All-time tab (absent = tab hidden). */
+  inspirationFeed?: TrendingFeed | null;
   /** Pre-selects the user's own niche (from onboarding) in the filter bar. */
   defaultNiche?: BusinessType | null;
 }) {
@@ -55,6 +62,7 @@ export function TrendsView({
     () => new Set(defaultNiche ? [defaultNiche] : []),
   );
   const [window, setWindow] = useState<TimeWindow>("rising");
+  const [query, setQuery] = useState("");
   const [openItem, setOpenItem] = useState<TrendingSlideshow | null>(null);
 
   useEffect(() => {
@@ -76,17 +84,25 @@ export function TrendsView({
       return nextSet;
     });
 
+  // All-time reads the hall-of-fame feed; the live tabs read the trends feed.
+  const activeFeed = window === "alltime" ? (inspirationFeed ?? null) : feed;
+
   const items = useMemo(() => {
-    if (!feed) return [];
+    if (!activeFeed) return [];
     const maxHours = WINDOW_HOURS[window];
-    const list = feed.items.filter(
+    const q = query.trim().toLowerCase();
+    const list = activeFeed.items.filter(
       (i) =>
         (selected.size === 0 || selected.has(i.niche)) &&
-        i.postedAgoHours <= maxHours,
+        i.postedAgoHours <= maxHours &&
+        (!q ||
+          i.title.toLowerCase().includes(q) ||
+          i.author.toLowerCase().includes(q) ||
+          (i.hookType ?? "").toLowerCase().includes(q)),
     );
-    // Best today / this week = the absolute biggest, ranked by raw views.
-    // Rising = live climb rate (snapshot delta) first; posts we haven't seen
-    // twice yet fall back below, ordered by lifetime rate.
+    // Best today / this week / All-time = the absolute biggest, ranked by raw
+    // views. Rising = live climb rate (snapshot delta) first; posts we haven't
+    // seen twice yet fall back below, ordered by lifetime rate.
     const key = (i: TrendingSlideshow) =>
       window === "rising"
         ? (i.risingVph ?? -1)
@@ -94,7 +110,7 @@ export function TrendsView({
     return [...list]
       .sort((a, b) => key(b) - key(a) || b.viewsPerHour - a.viewsPerHour)
       .map((item, i) => ({ ...item, rank: i + 1 }));
-  }, [feed, selected, window]);
+  }, [activeFeed, selected, window, query]);
 
   return (
     <div>
@@ -118,7 +134,9 @@ export function TrendsView({
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* time window toggle */}
           <div className="flex rounded-full bg-white/[0.06] p-1">
-            {WINDOW_TABS.map((tab) => (
+            {WINDOW_TABS.filter(
+              (tab) => tab.value !== "alltime" || inspirationFeed,
+            ).map((tab) => (
               <button
                 key={tab.value}
                 type="button"
@@ -135,54 +153,91 @@ export function TrendsView({
             ))}
           </div>
 
-          {feed && (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-white/35">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              </span>
-              {WINDOW_RANK_LABEL[window]} — updated{" "}
-              {feed.updatedMinutesAgo >= 60
-                ? `${Math.round(feed.updatedMinutesAgo / 60)}h`
-                : `${feed.updatedMinutesAgo}m`}{" "}
-              ago
-              {feed.source === "sample" && (
-                <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
-                  Sample data — run the trends migration to go live
-                </span>
-              )}
-            </p>
-          )}
+          <label className="flex min-w-0 items-center gap-2 rounded-full bg-white/[0.06] px-4 py-2 transition-colors focus-within:bg-white/[0.09] sm:w-64">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden className="shrink-0 text-white/30">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search hooks, authors, formats"
+              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+            />
+          </label>
         </div>
+
+        {activeFeed && (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-white/35">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            </span>
+            {WINDOW_RANK_LABEL[window]} — updated{" "}
+            {activeFeed.updatedMinutesAgo >= 60
+              ? `${Math.round(activeFeed.updatedMinutesAgo / 60)}h`
+              : `${activeFeed.updatedMinutesAgo}m`}{" "}
+            ago
+            {activeFeed.source === "sample" && (
+              <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                Sample data — run the trends migration to go live
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="mt-6">
-        {feed === null ? (
+        {activeFeed === null ? (
           <CardGridSkeleton count={10} className={GRID} />
         ) : items.length === 0 ? (
-          <EmptyState
-            title={
-              window === "rising"
-                ? "Nothing trending in those niches right now"
-                : `Nothing from the ${window === "day" ? "past 24 hours" : "past week"} in this view yet`
-            }
-            description={
-              window === "rising"
-                ? "The feed refreshes daily — or widen the filter to see the full chart."
-                : "The recency pool fills up as the daily refresh discovers active creators. Rising always has content."
-            }
-            action={
-              <button
-                type="button"
-                onClick={() =>
-                  window === "rising" ? setSelected(new Set()) : setWindow("rising")
-                }
-                className="rounded-full bg-white/[0.08] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/[0.14]"
-              >
-                {window === "rising" ? "Show all niches" : "Show Rising"}
-              </button>
-            }
-          />
+          query.trim() ? (
+            <EmptyState
+              title="Nothing matches that search"
+              description="Try fewer niches or a different phrase — new formats land on every refresh."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected(new Set());
+                    setQuery("");
+                  }}
+                  className="rounded-full bg-white/[0.08] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/[0.14]"
+                >
+                  Clear filters
+                </button>
+              }
+            />
+          ) : window === "alltime" ? (
+            <EmptyState
+              title="The hall of fame is empty"
+              description="The viral backfill hasn't run yet — once it does, the most viral slideshows of the past 12 months land here."
+            />
+          ) : (
+            <EmptyState
+              title={
+                window === "rising"
+                  ? "Nothing trending in those niches right now"
+                  : `Nothing from the ${window === "day" ? "past 24 hours" : "past week"} in this view yet`
+              }
+              description={
+                window === "rising"
+                  ? "The feed refreshes daily — or widen the filter to see the full chart."
+                  : "The recency pool fills up as the daily refresh discovers active creators. Rising always has content."
+              }
+              action={
+                <button
+                  type="button"
+                  onClick={() =>
+                    window === "rising" ? setSelected(new Set()) : setWindow("rising")
+                  }
+                  className="rounded-full bg-white/[0.08] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/[0.14]"
+                >
+                  {window === "rising" ? "Show all niches" : "Show Rising"}
+                </button>
+              }
+            />
+          )
         ) : (
           <div className={GRID}>
             {items.map((item) => (

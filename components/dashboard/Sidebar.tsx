@@ -45,7 +45,8 @@ const NAV: NavItem[] = [
   },
 ];
 
-// The Grow feature set — trends, inspiration, assets, scheduling, results.
+// The Grow feature set — trends (incl. the all-time hall of fame), assets,
+// scheduling, results.
 const GROW_NAV: NavItem[] = [
   {
     label: "Trends",
@@ -54,16 +55,6 @@ const GROW_NAV: NavItem[] = [
       <>
         <path d="M3 17l6-6 4 4 8-8" />
         <path d="M14 7h7v7" />
-      </>
-    ),
-  },
-  {
-    label: "Inspiration",
-    href: "/dashboard/inspiration",
-    icon: (
-      <>
-        <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V18h6v-1.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z" />
-        <path d="M9 21h6" />
       </>
     ),
   },

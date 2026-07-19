@@ -1,5 +1,9 @@
 import { TrendsView } from "@/components/dashboard/grow/TrendsView";
-import { getTrendingFeed, trendNicheForOnboarding } from "@/lib/trends";
+import {
+  getInspirationFeed,
+  getTrendingFeed,
+  trendNicheForOnboarding,
+} from "@/lib/trends";
 import { createClient } from "@/utils/supabase/server";
 
 export const metadata = { title: "Trends — SlideShowAI" };
@@ -13,7 +17,11 @@ export default async function TrendsPage() {
   const defaultNiche = trendNicheForOnboarding(
     user?.user_metadata?.niche as string | undefined,
   );
-  const feed = await getTrendingFeed();
+  // Live chart + the 12-month hall of fame (the All-time tab) in parallel.
+  const [feed, inspirationFeed] = await Promise.all([
+    getTrendingFeed(),
+    getInspirationFeed(),
+  ]);
   return (
     <div className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8">
       <header>
@@ -24,7 +32,11 @@ export default async function TrendsPage() {
         </p>
       </header>
       <div className="mt-6">
-        <TrendsView initialFeed={feed} defaultNiche={defaultNiche} />
+        <TrendsView
+          initialFeed={feed}
+          inspirationFeed={inspirationFeed}
+          defaultNiche={defaultNiche}
+        />
       </div>
     </div>
   );
