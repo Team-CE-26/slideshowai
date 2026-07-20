@@ -21,8 +21,7 @@ function Tile({ slide }: { slide: DemoSlide }) {
         draggable={false}
         className="absolute inset-0 h-full w-full object-cover"
       />
-      <div aria-hidden className="absolute inset-0 bg-black/30" />
-      <figcaption className="absolute inset-x-2 top-1/2 line-clamp-3 -translate-y-1/2 text-center text-[10px] font-extrabold leading-tight text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+      <figcaption className="tiktok-caption absolute inset-x-2 top-[58%] line-clamp-3 -translate-y-1/2 text-center text-[10px] leading-tight">
         {slide.caption}
       </figcaption>
     </figure>

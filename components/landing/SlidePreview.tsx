@@ -56,14 +56,9 @@ export function SlidePreview({
         {index + 1} / {total}
       </div>
 
-      {/* legibility scrim */}
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-linear-to-t from-black/85 via-black/30 to-black/20"
-      />
-
-      {/* overlay caption — centered vertically to match the hero phone */}
-      <p className="absolute inset-x-4 top-1/2 -translate-y-1/2 text-balance text-center text-lg font-extrabold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] sm:text-base md:text-lg">
+      {/* overlay caption — TikTok Sans + black outline, upper-middle like the
+          product's real render (no scrim; the outline carries legibility) */}
+      <p className="tiktok-caption absolute inset-x-4 top-[58%] -translate-y-1/2 text-balance text-center text-lg leading-tight sm:text-base md:text-lg">
         {slide.caption}
       </p>
     </div>
