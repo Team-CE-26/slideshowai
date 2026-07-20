@@ -117,6 +117,18 @@ const GOAL_PHRASES: Record<string, string> = {
   brand: "build your brand",
 };
 
+// Attribution ("how did you hear about us"). Deliberately the LAST question —
+// it benefits us, not the user, so it sits after they're invested and right
+// before the payoff screen, where a drop-off costs least.
+const SOURCES = [
+  { id: "tiktok", label: "TikTok" },
+  { id: "instagram", label: "Instagram" },
+  { id: "youtube", label: "YouTube" },
+  { id: "google", label: "Google search" },
+  { id: "friend", label: "Friend or colleague" },
+  { id: "other", label: "Other" },
+];
+
 const STEP_KEYS = [
   "welcome",
   "wow1",
@@ -124,6 +136,7 @@ const STEP_KEYS = [
   "business",
   "niche",
   "goal",
+  "source",
   "finish",
 ] as const;
 type StepKey = (typeof STEP_KEYS)[number];
@@ -140,6 +153,8 @@ export function OnboardingWizard({
   const [businessFocused, setBusinessFocused] = useState(false);
   const [niche, setNiche] = useState<string | null>(null);
   const [goal, setGoal] = useState<string | null>(null);
+  const [source, setSource] = useState<string | null>(null);
+  const [sourceOther, setSourceOther] = useState("");
   const [demoReady, setDemoReady] = useState(false);
   const [pending, startTransition] = useTransition();
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,23 +214,40 @@ export function OnboardingWizard({
     setBurstSparks(celebrationBurst());
   };
 
-  const finish = () =>
-    startTransition(() => {
-      void completeOnboarding({
-        businessName,
-        niche: niche ?? undefined,
-        goal: goal ?? undefined,
-      });
-    });
-  const skip = () => startTransition(() => void skipOnboarding());
+  // Whatever the user has answered so far — used by both finish and skip, so
+  // skipping keeps the answers they already gave instead of discarding them.
+  const answers = () => ({
+    businessName,
+    niche: niche ?? undefined,
+    goal: goal ?? undefined,
+    source: source ?? undefined,
+    sourceDetail: source === "other" ? sourceOther.trim() || undefined : undefined,
+  });
 
-  const canContinue = key === "business" ? businessName.trim().length > 0 : true;
+  const finish = () => startTransition(() => void completeOnboarding(answers()));
+  const skip = () => startTransition(() => void skipOnboarding(answers()));
+
+  const canContinue =
+    key === "business"
+      ? businessName.trim().length > 0
+      : key === "source" && source === "other"
+        ? sourceOther.trim().length > 0
+        : true;
 
   const showBack =
-    key === "business" || key === "niche" || key === "goal" || key === "finish";
-  const showSkip = key === "business" || key === "niche" || key === "goal";
-  // niche + goal advance on selection — no Continue button to double-tap
-  const showPrimary = key !== "niche" && key !== "goal";
+    key === "business" ||
+    key === "niche" ||
+    key === "goal" ||
+    key === "source" ||
+    key === "finish";
+  const showSkip =
+    key === "business" || key === "niche" || key === "goal" || key === "source";
+  // niche + goal advance on selection — no Continue button to double-tap. Source
+  // does too, except "Other", which needs its text field confirmed.
+  const showPrimary =
+    key !== "niche" &&
+    key !== "goal" &&
+    (key !== "source" || source === "other");
   const primaryLabel = key === "welcome" ? "Get Started" : "Continue";
 
   return (
@@ -533,6 +565,70 @@ export function OnboardingWizard({
                   );
                 })}
               </div>
+            </>
+          )}
+
+          {key === "source" && (
+            <>
+              <h2 className="text-2xl font-extrabold tracking-tight text-white">
+                Last thing — how did you find us?
+              </h2>
+              <p className="mt-2 text-[15px] text-white/50">
+                Helps us know where to show up more.
+              </p>
+              <div className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-2.5">
+                {SOURCES.map((s, i) => {
+                  const active = source === s.id;
+                  const dimmed = source !== null && !active;
+                  return (
+                    <div
+                      key={s.id}
+                      className="animate-generate"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (s.id === "other") {
+                            // needs the free-text field confirmed — don't advance
+                            setSource("other");
+                            fireBurst();
+                            return;
+                          }
+                          pickAndAdvance(() => {
+                            setSource(s.id);
+                            fireBurst();
+                          }, 520);
+                        }}
+                        className={`flex w-full items-center justify-center rounded-2xl border px-3 py-3.5 text-center text-sm font-bold transition-all duration-300 active:scale-[0.99] ${
+                          active
+                            ? "z-10 scale-[1.03] border-accent bg-accent/15 text-white shadow-lg shadow-accent/40"
+                            : dimmed
+                              ? "scale-[0.97] border-white/10 bg-[#1c1c1e] text-white/70 opacity-50"
+                              : "border-white/10 bg-[#1c1c1e] text-white hover:-translate-y-0.5 hover:border-accent/60 hover:bg-accent/[0.07] hover:shadow-lg hover:shadow-accent/15"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {source === "other" && (
+                <div className="animate-fade-up mx-auto mt-3 max-w-sm">
+                  <input
+                    autoFocus
+                    value={sourceOther}
+                    onChange={(e) => setSourceOther(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && sourceOther.trim()) next();
+                    }}
+                    maxLength={80}
+                    placeholder="Where'd you hear about us?"
+                    className="w-full rounded-2xl border border-white/10 bg-[#1c1c1e] px-4 py-3.5 text-center text-sm text-white outline-none transition-colors placeholder:text-white/25 focus:border-accent/60"
+                  />
+                </div>
+              )}
             </>
           )}
 
