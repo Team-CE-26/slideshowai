@@ -418,10 +418,22 @@ export async function POST(request: Request) {
       }),
     );
 
-    const promptText = (body.prompt || "").toLowerCase();
+    // Strip the trailing "Goal of this post: …" the composer appends, and stop
+    // words, so overlap reflects the actual topic. >=3 chars keeps "gym"/"abs".
+    const STOP = new Set([
+      "the", "and", "for", "you", "your", "our", "with", "that", "this", "are",
+      "post", "goal", "what", "why", "how", "make", "makes", "things",
+    ]);
+    const promptText = (body.prompt || "")
+      .toLowerCase()
+      .replace(/goal of this post:[\s\S]*/, "");
     const words = (t: string) =>
       new Set(
-        t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3),
+        t
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ")
+          .split(/\s+/)
+          .filter((w) => w.length >= 3 && !STOP.has(w)),
       );
     const promptWords = words(promptText);
     const overlap = (t: string) =>
@@ -441,10 +453,13 @@ export async function POST(request: Request) {
         );
       }
     });
+    // Real drift = the WHOLE deck (title + every reason) shares nothing with the
+    // topic, not just the title (a good title can paraphrase with synonyms).
     const title = deck.find((s) => s.role === "title");
-    if (title && promptText && overlap(title.text) === 0) {
+    const deckOverlap = deck.reduce((sum, s) => sum + overlap(s.text), 0);
+    if (title && promptText.trim() && deckOverlap === 0) {
       flags.push(
-        `**TOPIC DRIFT** — the title shares no significant words with the prompt.\n  - prompt: "${body.prompt}"\n  - title:  "${title.text}"`,
+        `**TOPIC DRIFT** — no slide shares a significant word with the prompt.\n  - prompt: "${body.prompt}"\n  - title:  "${title.text}"`,
       );
     }
     if (photoAssign && excludedPhotos > 0) {
@@ -455,7 +470,7 @@ export async function POST(request: Request) {
 
     diag.add(
       "Request",
-      `- prompt: **"${body.prompt}"**\n- niche: ${body.niche}\n- source: ${mode === "single" ? "Upload" : "Stock photos"}\n- slides: ${slideCount} (structure forces title + ${slideCount - 2} middles + cta, with ONE forced \`plug\`)\n- uploads: ${userBufs.length}`,
+      `- prompt: **"${body.prompt}"**\n- niche: ${body.niche}\n- source: ${mode === "single" ? "Upload" : "Stock photos"}\n- slides: ${slideCount} (title + ${slideCount - 2} value reasons + cta; no plug/ad slide)\n- uploads: ${userBufs.length}`,
     );
     diag.add(
       "Anomalies detected",
