@@ -58,9 +58,10 @@ export function TrendsView({
   defaultNiche?: BusinessType | null;
 }) {
   const [feed, setFeed] = useState<TrendingFeed | null>(initialFeed ?? null);
-  const [selected, setSelected] = useState<Set<BusinessType>>(
+  const [selected, setSelected] = useState<Set<string>>(
     () => new Set(defaultNiche ? [defaultNiche] : []),
   );
+  const [selectedMediums, setSelectedMediums] = useState<Set<string>>(new Set());
   const [window, setWindow] = useState<TimeWindow>("rising");
   const [query, setQuery] = useState("");
   const [openItem, setOpenItem] = useState<TrendingSlideshow | null>(null);
@@ -76,13 +77,32 @@ export function TrendsView({
     };
   }, [initialFeed]);
 
-  const toggleNiche = (niche: BusinessType) =>
-    setSelected((cur) => {
-      const nextSet = new Set(cur);
-      if (nextSet.has(niche)) nextSet.delete(niche);
-      else nextSet.add(niche);
-      return nextSet;
-    });
+  const toggleIn =
+    (set: (fn: (cur: Set<string>) => Set<string>) => void) => (value: string) =>
+      set((cur) => {
+        const nextSet = new Set(cur);
+        if (nextSet.has(value)) nextSet.delete(value);
+        else nextSet.add(value);
+        return nextSet;
+      });
+  const toggleNiche = toggleIn(setSelected);
+  const toggleMedium = toggleIn(setSelectedMediums);
+
+  // The library (All-time) has OPEN niches + product mediums — its facets are
+  // computed from the data, with counts, like a real directory. The live tabs
+  // keep the fixed five business niches.
+  const libraryFacets = useMemo(() => {
+    const niches = new Map<string, number>();
+    const mediums = new Map<string, number>();
+    for (const i of inspirationFeed?.items ?? []) {
+      const n = i.nicheLabel ?? i.niche;
+      niches.set(n, (niches.get(n) ?? 0) + 1);
+      if (i.medium) mediums.set(i.medium, (mediums.get(i.medium) ?? 0) + 1);
+    }
+    const sorted = (m: Map<string, number>) =>
+      [...m.entries()].sort((a, b) => b[1] - a[1]);
+    return { niches: sorted(niches), mediums: sorted(mediums) };
+  }, [inspirationFeed]);
 
   // All-time reads the hall-of-fame feed; the live tabs read the trends feed.
   const activeFeed = window === "alltime" ? (inspirationFeed ?? null) : feed;
@@ -93,12 +113,16 @@ export function TrendsView({
     const q = query.trim().toLowerCase();
     const list = activeFeed.items.filter(
       (i) =>
-        (selected.size === 0 || selected.has(i.niche)) &&
+        (selected.size === 0 || selected.has(i.nicheLabel ?? i.niche)) &&
+        (window !== "alltime" ||
+          selectedMediums.size === 0 ||
+          (i.medium != null && selectedMediums.has(i.medium))) &&
         i.postedAgoHours <= maxHours &&
         (!q ||
           i.title.toLowerCase().includes(q) ||
           i.author.toLowerCase().includes(q) ||
-          (i.hookType ?? "").toLowerCase().includes(q)),
+          (i.hookType ?? "").toLowerCase().includes(q) ||
+          (i.medium ?? "").toLowerCase().includes(q)),
     );
     // Best today / this week / All-time = the absolute biggest, ranked by raw
     // views. Rising = live climb rate (snapshot delta) first; posts we haven't
@@ -110,27 +134,71 @@ export function TrendsView({
     return [...list]
       .sort((a, b) => key(b) - key(a) || b.viewsPerHour - a.viewsPerHour)
       .map((item, i) => ({ ...item, rank: i + 1 }));
-  }, [activeFeed, selected, window, query]);
+  }, [activeFeed, selected, selectedMediums, window, query]);
 
   return (
     <div>
       {/* freshness + filters */}
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterPill
-            label="All niches"
-            active={selected.size === 0}
-            onClick={() => setSelected(new Set())}
-          />
-          {BUSINESS_TYPES.map((niche) => (
+        {window === "alltime" ? (
+          <>
+            {/* library facets — open-ended niches with counts, like a directory */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="pr-1 text-[11px] font-bold uppercase tracking-wider text-white/30">
+                Niche
+              </span>
+              <FilterPill
+                label={`All (${(inspirationFeed?.items ?? []).length})`}
+                active={selected.size === 0}
+                onClick={() => setSelected(new Set())}
+              />
+              {libraryFacets.niches.map(([niche, count]) => (
+                <FilterPill
+                  key={niche}
+                  label={`${niche} (${count})`}
+                  active={selected.has(niche)}
+                  onClick={() => toggleNiche(niche)}
+                />
+              ))}
+            </div>
+            {libraryFacets.mediums.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="pr-1 text-[11px] font-bold uppercase tracking-wider text-white/30">
+                  Selling
+                </span>
+                <FilterPill
+                  label="All"
+                  active={selectedMediums.size === 0}
+                  onClick={() => setSelectedMediums(new Set())}
+                />
+                {libraryFacets.mediums.slice(0, 14).map(([medium, count]) => (
+                  <FilterPill
+                    key={medium}
+                    label={`${medium} (${count})`}
+                    active={selectedMediums.has(medium)}
+                    onClick={() => toggleMedium(medium)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
             <FilterPill
-              key={niche}
-              label={niche}
-              active={selected.has(niche)}
-              onClick={() => toggleNiche(niche)}
+              label="All niches"
+              active={selected.size === 0}
+              onClick={() => setSelected(new Set())}
             />
-          ))}
-        </div>
+            {BUSINESS_TYPES.map((niche) => (
+              <FilterPill
+                key={niche}
+                label={niche}
+                active={selected.has(niche)}
+                onClick={() => toggleNiche(niche)}
+              />
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* time window toggle */}
           <div className="flex rounded-full bg-white/[0.06] p-1">
@@ -413,7 +481,7 @@ export function TrendCard({
       </div>
       <p className="mt-2 line-clamp-1 text-sm font-semibold text-white">{item.title}</p>
       <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
-        {item.author} · {item.hookType ?? item.niche}
+        {item.author} · {item.hookType ?? item.nicheLabel ?? item.niche}
       </p>
     </button>
   );
@@ -529,7 +597,8 @@ export function TrendDetail({
               <VelocityChip item={item} />
             </div>
             <p className="mt-2 text-xs text-white/35">
-              {item.author} · {item.niche} ·{" "}
+              {item.author} · {item.nicheLabel ?? item.niche} ·{" "}
+              {item.medium && item.medium !== "none" ? `sells: ${item.medium} · ` : ""}
               {item.slideCount > 0 ? `${item.slideCount} slides · ` : ""}
               {formatCount(item.likes)} likes · {agoLabel(item.postedAgoHours)}
             </p>

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { GENERATOR_NICHES } from "@/lib/generator-options";
 import type { AnatomyBeat } from "@/lib/trends";
 
 // "Remix this trend": transplant a trending post's FORMAT onto the user's own
@@ -132,8 +131,9 @@ export async function POST(request: Request) {
   }
 
   const slides = Math.min(8, Math.max(4, parsed.slide_count ?? 6));
-  const genNiche =
-    TREND_TO_GENERATOR_NICHE[trend.niche] ?? GENERATOR_NICHES[0].value;
+  // Open library niches (Self Improvement, StudyTok, …) have no fixed
+  // generator collection — "other" makes image selection lean on the prompt.
+  const genNiche = TREND_TO_GENERATOR_NICHE[trend.niche] ?? "other";
 
   return NextResponse.json({
     prompt,

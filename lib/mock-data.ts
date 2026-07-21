@@ -225,6 +225,11 @@ export interface TrendingSlideshow {
   hookType?: string | null;
   /** Slide-by-slide format breakdown from the curation pass. */
   anatomy?: { slides: string; beat: string }[] | null;
+  /** The row's REAL niche label (the library has open-ended niches beyond
+   *  BUSINESS_TYPES; `niche` stays a valid key for gradients/filters). */
+  nicheLabel?: string;
+  /** Product medium from curation ("app", "amazon affiliate", "none", …). */
+  medium?: string | null;
   /** View counts across recent refreshes (oldest → newest), for sparklines. */
   history?: number[];
   /** LIVE climb rate — views/hour gained between the two most recent stat

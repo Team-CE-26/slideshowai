@@ -850,6 +850,7 @@ interface FeedRow {
   why_it_works?: string | null;
   hook_type?: string | null;
   anatomy?: AnatomyBeat[] | null;
+  medium?: string | null;
 }
 
 const GENERIC_WHY =
@@ -1020,8 +1021,8 @@ export async function getTrendingFeed(): Promise<TrendingFeed> {
 // The viral hall of fame: inspiration_posts (12-month window, populated by
 // scripts/ingest-inspiration.mjs), ranked by raw views instead of momentum.
 const INSPIRATION_WINDOW_DAYS = 365;
-const INSPIRATION_PER_NICHE = 120;
-const INSPIRATION_FETCH_LIMIT = 1000;
+const INSPIRATION_PER_NICHE = 250;
+const INSPIRATION_FETCH_LIMIT = 5000;
 
 /** Empty items (never the sample feed) until the backfill has run. */
 export async function getInspirationFeed(): Promise<TrendingFeed> {
@@ -1036,18 +1037,26 @@ export async function getInspirationFeed(): Promise<TrendingFeed> {
     const since = new Date(
       Date.now() - INSPIRATION_WINDOW_DAYS * 86_400_000,
     ).toISOString();
-    const { data, error } = (await supabase
-      .from("inspiration_posts")
-      .select(
-        "id, niche, title, author, cover_url, slide_count, views, views_per_hour, likes, posted_at, tiktok_url, fetched_at, why_it_works, hook_type, anatomy",
-      )
-      .gte("posted_at", since)
-      .order("views", { ascending: false })
-      .limit(INSPIRATION_FETCH_LIMIT)) as {
-      data: FeedRow[] | null;
-      error: { message: string } | null;
-    };
-    if (error || !data || data.length === 0) return empty;
+    // PostgREST caps a single response at 1000 rows no matter the .limit(),
+    // so page with .range() until the library (or FETCH_LIMIT) is exhausted.
+    const data: FeedRow[] = [];
+    for (let from = 0; from < INSPIRATION_FETCH_LIMIT; from += 1000) {
+      const { data: page, error } = (await supabase
+        .from("inspiration_posts")
+        .select(
+          "id, niche, title, author, cover_url, slide_count, views, views_per_hour, likes, posted_at, tiktok_url, fetched_at, why_it_works, hook_type, anatomy, medium",
+        )
+        .gte("posted_at", since)
+        .order("views", { ascending: false })
+        .range(from, from + 999)) as {
+        data: FeedRow[] | null;
+        error: { message: string } | null;
+      };
+      if (error || !page) break;
+      data.push(...page);
+      if (page.length < 1000) break;
+    }
+    if (data.length === 0) return empty;
 
     const perNiche = new Map<string, number>();
     const balanced = data.filter((r) => {
@@ -1074,9 +1083,13 @@ export async function getInspirationFeed(): Promise<TrendingFeed> {
         rank: i + 1,
         title: r.title,
         author: r.author,
+        // `niche` must stay a valid BUSINESS_TYPES key (gradients); the row's
+        // REAL niche — the library is open-ended — travels as nicheLabel.
         niche: (BUSINESS_TYPES as readonly string[]).includes(r.niche)
           ? (r.niche as BusinessType)
           : BUSINESS_TYPES[0],
+        nicheLabel: r.niche,
+        medium: r.medium ?? null,
         cover: r.cover_url ?? "",
         slideCount: r.slide_count,
         views24h: r.views,
