@@ -77,16 +77,14 @@ export function TrendsView({
     };
   }, [initialFeed]);
 
-  const toggleIn =
+  // Single-select: clicking a pill selects ONLY that facet (click again to
+  // clear). Multi-select sets left users with stale selections — a pizza post
+  // "under Relationships" was really a still-active Food & Dining pill.
+  const single =
     (set: (fn: (cur: Set<string>) => Set<string>) => void) => (value: string) =>
-      set((cur) => {
-        const nextSet = new Set(cur);
-        if (nextSet.has(value)) nextSet.delete(value);
-        else nextSet.add(value);
-        return nextSet;
-      });
-  const toggleSelected = toggleIn(setSelected);
-  const toggleMedium = toggleIn(setSelectedMediums);
+      set((cur) => (cur.has(value) ? new Set() : new Set([value])));
+  const selectNiche = single(setSelected);
+  const toggleMedium = single(setSelectedMediums);
   // The niche rail shows the FULL library catalog on every tab. The live
   // charts only track the five business niches, so picking a library-only
   // niche jumps to All-time instead of stranding the user on an empty chart.
@@ -98,7 +96,7 @@ export function TrendsView({
     ) {
       setWindow("alltime");
     }
-    toggleSelected(niche);
+    selectNiche(niche);
   };
 
   // The library (All-time) has OPEN niches + product mediums — its facets are
