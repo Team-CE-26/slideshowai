@@ -105,6 +105,21 @@ The composer's five pill dropdowns are a lot of decisions to make *before* seein
 
 **Uploads are downscaled in the browser** (`downscaleImage`, 1280px long edge / JPEG 0.82) before hitting the wire — 10 full-res phone photos blew past Vercel's ~4.5MB body limit, and they now feed two endpoints.
 
+## Generation robustness (2026-07-21)
+
+- **Storage uploads retry.** `bad record mac` still occurs occasionally even with `agent:false` (so it's transient TLS/network flakiness, not session reuse). There was no retry, so one bad record threw away a whole generation. `uploadWithRetry` = 3 attempts, 300→600ms backoff, retries transport errors + 5xx/429, **fast-fails 4xx**. Never call `rawStorageUpload` directly.
+- **No orphan rows.** The `slideshows` row is inserted before the uploads, so failures used to strand empty decks in the library (3 had piled up). Both the upload loop and the `slides` insert delete the row before rethrowing. Billing was already safe — `consume()` runs only after persistence.
+- **NO EMOJIS, EVER — they physically cannot render.** `composite.ts` builds resvg with `loadSystemFonts:false` + only the TikTok Sans TTFs, which have no emoji glyphs, so an emoji bakes as a **tofu box ▯** (verified by rendering). Both copy prompts now ban them outright (they used to say "at most one emoji per slideshow"), and `stripEmoji` in `/api/generate` removes any that slip through. Digits survive (`Emoji` but not `Emoji_Presentation`).
+
+## Performance — measure with `next start`, never `next dev`
+
+**`next dev` timings are Turbopack compiling on demand, not real cost** (`/dashboard/analytics`: 994ms cold → 36ms warm). Always benchmark a production build before concluding anything. Supabase itself is healthy (~110ms auth, ~134ms PostgREST).
+
+- **`proxy.ts` must NOT call `auth.getUser()`.** That's an unconditional network round-trip to `/auth/v1/user`, and the matcher covers nearly every path — it was charging **~110ms to every request in the app**, static pages and API calls included. It uses `getSession()` instead, which only hits the network when the token actually expired. Safe because the proxy makes no authz decisions ("no route guards" — every page/route calls `getUser()` itself).
+- Results: `/privacy` 110→7ms, `/api/*` 115→3ms, `/dashboard` 366→251ms, `/dashboard/slideshows` 477→254ms.
+- `getCachedUser()` (`utils/supabase/server.ts`) memoizes the user per request via React `cache()`. It did **not** improve latency — Next renders layout and page concurrently, so those calls already overlapped — but it halves auth API calls.
+- ⚠️ `npm run build` starts with `rm -rf .next`; running it while `next dev` is live can corrupt Turbopack's cache. Stop the dev server first.
+
 ## Generation diagnostics — LOCAL ONLY (`lib/generate/diagnostics.ts`)
 
 Every generation run dumps a full forensic folder so a bad slideshow can be diagnosed **without screenshots**:
