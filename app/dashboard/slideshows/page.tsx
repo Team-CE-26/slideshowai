@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, getCachedUser } from "@/utils/supabase/server";
 
 // User-specific + short-lived signed URLs -> always render fresh.
 export const dynamic = "force-dynamic";
@@ -92,9 +92,7 @@ function Card({ item }: { item: Item }) {
 
 export default async function SlideshowsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   if (!user) {
     return (
@@ -117,26 +115,45 @@ export default async function SlideshowsPage() {
     );
   }
 
+  const SHOW_COLS =
+    "id, title, niche, slide_count, created_at, slides(position, storage_path)";
+
+  // These two used to run back-to-back — the slideshows query waited on
+  // postedIds from the posts query, costing two serial round-trips. They're
+  // independent as long as we fetch the saved decks up front, so fire both at
+  // once and reconcile after.
+  const [{ data: postData }, { data: savedData }] = await Promise.all([
+    supabase
+      .from("tiktok_posts")
+      .select("id, slideshow_id, status, privacy_level, created_at")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("slideshows")
+      .select(SHOW_COLS)
+      .eq("status", "saved")
+      .order("created_at", { ascending: false }),
+  ]);
+
   // Latest post per slideshow (posts ordered newest-first, first seen wins).
-  const { data: postData } = await supabase
-    .from("tiktok_posts")
-    .select("id, slideshow_id, status, privacy_level, created_at")
-    .order("created_at", { ascending: false });
   const latestPost = new Map<string, PostRow>();
   for (const p of (postData ?? []) as PostRow[]) {
     if (!latestPost.has(p.slideshow_id)) latestPost.set(p.slideshow_id, p);
   }
-  const postedIds = [...latestPost.keys()];
 
   // Show saved slideshows plus any that have been posted (even if not "saved").
-  const base = supabase
-    .from("slideshows")
-    .select("id, title, niche, slide_count, created_at, slides(position, storage_path)")
-    .order("created_at", { ascending: false });
-  const { data } = postedIds.length
-    ? await base.or(`status.eq.saved,id.in.(${postedIds.join(",")})`)
-    : await base.eq("status", "saved");
-  const shows = (data ?? []) as ShowRow[];
+  // Posted decks are normally saved too, so this follow-up usually never runs.
+  let shows = (savedData ?? []) as ShowRow[];
+  const savedIds = new Set(shows.map((s) => s.id));
+  const missing = [...latestPost.keys()].filter((id) => !savedIds.has(id));
+  if (missing.length) {
+    const { data: extra } = await supabase
+      .from("slideshows")
+      .select(SHOW_COLS)
+      .in("id", missing);
+    shows = [...shows, ...((extra ?? []) as ShowRow[])].sort((a, b) =>
+      a.created_at < b.created_at ? 1 : -1,
+    );
+  }
 
   const items: Item[] = shows.map((s) => {
     const first = [...(s.slides ?? [])].sort((a, b) => a.position - b.position)[0];

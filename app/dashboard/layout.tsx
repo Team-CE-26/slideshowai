@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { TopNav } from "@/components/dashboard/TopNav";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { PLANS, isPlanId, type PlanId } from "@/lib/billing/plans";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, getCachedUser } from "@/utils/supabase/server";
 
 export default async function DashboardLayout({
   children,
@@ -10,9 +10,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   // No guest access — the dashboard is sign-in only. Anyone without a session
   // is sent to sign up (existing users can switch to Log in from there).

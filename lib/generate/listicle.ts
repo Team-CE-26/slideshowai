@@ -112,8 +112,9 @@ const SYSTEM =
   "• No Title Case headlines — write the way a person texts (sentence case).\n" +
   "• Ban clichés and filler: \"you're probably making\", \"did you know\", \"here's " +
   "why\", \"stay consistent\", \"game-changer\", \"unlock\", \"elevate\", \"level up\".\n" +
-  "• Short lines (most under ~12 words). No hashtags. At most one emoji in the whole " +
-  "slideshow. Be concrete, specific, and a little contrarian.\n" +
+  "• Short lines (most under ~12 words). No hashtags. NEVER use emojis — the " +
+  "caption font has no emoji glyphs, so any emoji bakes onto the slide as an empty " +
+  "box. Be concrete, specific, and a little contrarian.\n" +
   "NO AD SLIDE. Every middle slide is pure value delivering the topic. Never insert " +
   "a promo/product slide, and never restate the topic as if it were a product.\n" +
   "For EVERY slide also return image_keywords: 3-5 concrete VISUAL words describing " +

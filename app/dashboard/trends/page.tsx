@@ -4,16 +4,13 @@ import {
   getTrendingFeed,
   trendNicheForOnboarding,
 } from "@/lib/trends";
-import { createClient } from "@/utils/supabase/server";
+import { getCachedUser } from "@/utils/supabase/server";
 
 export const metadata = { title: "Trends — SlideShowAI" };
 export const dynamic = "force-dynamic";
 
 export default async function TrendsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   const defaultNiche = trendNicheForOnboarding(
     user?.user_metadata?.niche as string | undefined,
   );

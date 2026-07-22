@@ -94,7 +94,8 @@ const SYSTEM =
   "Title Case headlines (write the way a person texts, sentence case); ban clichés " +
   "and filler (\"you're probably making\", \"did you know\", \"game-changer\", " +
   "\"unlock\", \"elevate\", \"level up\"). Short lines (most under ~12 words). No " +
-  "hashtags. At most one emoji per slideshow. Be concrete and a little contrarian.\n" +
+  "hashtags. NEVER use emojis — the caption font has no emoji glyphs, so any emoji " +
+  "bakes onto the slide as an empty box. Be concrete and a little contrarian.\n" +
   "STRUCTURE (listicle): a numbered TITLE hook, then numbered REASON slides that " +
   "each deliver one concrete point of the topic, and a CTA last. There is NO ad or " +
   "product slide — every middle slide is pure value.\n" +

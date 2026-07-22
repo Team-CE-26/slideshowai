@@ -1,14 +1,12 @@
 import { ScheduleView } from "@/components/dashboard/grow/ScheduleView";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, getCachedUser } from "@/utils/supabase/server";
 
 export const metadata = { title: "Schedule — SlideShowAI" };
 export const dynamic = "force-dynamic";
 
 export default async function SchedulePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   let connected = false;
   let scheduled: unknown[] = [];
